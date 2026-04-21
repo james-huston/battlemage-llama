@@ -1,0 +1,67 @@
+# battlemage-llama — docker compose orchestration
+#
+# Before first run:
+#   1. Verify your render/video group IDs and set them in .env if different:
+#        $ getent group render video
+#        render:x:993:
+#        video:x:44:hustonjs
+#      If yours differ from 993/44, copy .env.example to .env and override.
+#
+#   2. Create your config/llama-swap.yaml from the example:
+#        $ cp config/llama-swap.example.yaml config/llama-swap.yaml
+#        $ ./scripts/find-gguf-blobs.sh    # map ollama models to blob paths
+#        Then edit config/llama-swap.yaml with the actual paths.
+#
+#   3. Build and start:
+#        $ docker compose up -d --build
+#
+# Usage:
+#        $ curl http://localhost:11434/v1/models
+#        $ curl http://localhost:11434/v1/chat/completions \
+#            -H "Content-Type: application/json" \
+#            -d '{"model":"qwen3-coder-30b","messages":[{"role":"user","content":"hi"}]}'
+
+services:
+  llama-swap:
+    build:
+      context: .
+      # Uncomment to pin a specific llama-swap version:
+      # args:
+      #   LLAMA_SWAP_VERSION: "198"
+      #   LLAMA_CPP_REF: "master"
+    image: battlemage-llama:latest
+    container_name: battlemage-llama
+    restart: unless-stopped
+
+    ports:
+      - "11434:11434"
+
+    # Intel GPU passthrough — both cards are exposed; the ONEAPI_DEVICE_SELECTOR
+    # env in the Dockerfile restricts to Level-Zero GPUs only (hides CPU OpenCL).
+    devices:
+      - /dev/dri:/dev/dri
+
+    # Supplementary groups so the container user can access /dev/dri.
+    # Defaults assume stock Ubuntu 24+/25+ GIDs. If yours differ, set
+    # RENDER_GID / VIDEO_GID in .env — see docker-compose.yml header comment.
+    group_add:
+      - "${RENDER_GID:-993}"
+      - "${VIDEO_GID:-44}"
+
+    volumes:
+      # Your llama-swap config — hot-reloaded when you edit this file
+      - ./config/llama-swap.yaml:/config/llama-swap.yaml:ro
+
+      # Your GGUF models. Default: reuse Ollama's blob store.
+      # Override with MODELS_DIR env in .env if your GGUFs live elsewhere.
+      - ${MODELS_DIR:-/opt/apps/ollama-models}:/models:ro
+
+    # Larger shared memory for bigger contexts / batch sizes
+    shm_size: "8gb"
+
+    # Polite logging — llama-swap and llama-server are chatty
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

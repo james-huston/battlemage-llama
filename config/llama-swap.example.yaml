@@ -1,0 +1,127 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/mostlygeek/llama-swap/refs/heads/main/config-schema.json
+#
+# battlemage-llama — llama-swap configuration example
+#
+# SETUP:
+#   1. Copy this file to config/llama-swap.yaml (the real one, gitignored).
+#   2. Run ./scripts/find-gguf-blobs.sh on your host to discover which
+#      sha256 blobs correspond to which Ollama model names.
+#   3. Replace the <sha256-REPLACE-ME> placeholders below with actual blob names.
+#   4. All paths below are paths AS SEEN INSIDE THE CONTAINER. Your host
+#      MODELS_DIR is bind-mounted at /models/ — if you pointed it at Ollama's
+#      blob store, files live under /models/blobs/sha256-...
+#
+# Path notes:
+#   - /opt/llama-cpp/bin/llama-server  — compiled inside the image
+#   - /models/blobs/sha256-<digest>    — your bind-mounted GGUFs
+#
+# See: https://github.com/mostlygeek/llama-swap/blob/main/config.example.yaml
+# for the full reference of config options (TTL, groups, aliases, etc).
+
+# How long llama-swap waits for a newly-started model to report healthy
+# before giving up. Cold-start for a 30B model on the B70 takes 10-30s.
+healthCheckTimeout: 180
+
+# Starting port for auto-assigned model server ports.
+# Each model gets its own ${PORT}; llama-swap assigns them from here upward.
+startPort: 12800
+
+models:
+
+  # ---------------------------------------------------------------------------
+  # Qwen3 Coder — 30B MoE (A3B). Validated at ~59 tok/s on B70 Vulkan/SYCL.
+  # ---------------------------------------------------------------------------
+  qwen3-coder-30b:
+    cmd: |
+      /opt/llama-cpp/bin/llama-server
+      --port ${PORT}
+      --model /models/blobs/<sha256-REPLACE-ME>
+      --alias qwen3-coder-30b
+      --host 127.0.0.1
+      -ngl 99
+      -c 32768
+      --device SYCL0
+      -sm none
+    # Auto-unload after 10 min idle
+    ttl: 600
+
+  # ---------------------------------------------------------------------------
+  # Qwen3 30B A3B Thinking — general-purpose MoE with reasoning traces.
+  # ---------------------------------------------------------------------------
+  qwen3-30b-a3b:
+    cmd: |
+      /opt/llama-cpp/bin/llama-server
+      --port ${PORT}
+      --model /models/blobs/<sha256-REPLACE-ME>
+      --alias qwen3-30b-a3b
+      --host 127.0.0.1
+      -ngl 99
+      -c 32768
+      --device SYCL0
+      -sm none
+    ttl: 600
+
+  # ---------------------------------------------------------------------------
+  # Qwen2.5 Coder 7B — fast model for autocomplete / small tasks.
+  # ---------------------------------------------------------------------------
+  qwen2.5-coder-7b:
+    cmd: |
+      /opt/llama-cpp/bin/llama-server
+      --port ${PORT}
+      --model /models/blobs/<sha256-REPLACE-ME>
+      --alias qwen2.5-coder-7b
+      --host 127.0.0.1
+      -ngl 99
+      -c 32768
+      --device SYCL0
+      -sm none
+    # Small model, cheap to reload — can unload faster
+    ttl: 300
+
+  # ---------------------------------------------------------------------------
+  # Devstral Small 2 — 24B Mistral, software-engineering tuned.
+  # ---------------------------------------------------------------------------
+  # devstral-small-24b:
+  #   cmd: |
+  #     /opt/llama-cpp/bin/llama-server
+  #     --port ${PORT}
+  #     --model /models/blobs/<sha256-REPLACE-ME>
+  #     --alias devstral-small-24b
+  #     --host 127.0.0.1
+  #     -ngl 99
+  #     -c 32768
+  #     --device SYCL0
+  #     -sm none
+  #   ttl: 600
+
+  # ---------------------------------------------------------------------------
+  # DeepSeek R1 32B — reasoning model (emits <think>...</think> blocks).
+  # Dense model, so lower tok/s than MoE models of similar size.
+  # ---------------------------------------------------------------------------
+  # deepseek-r1-32b:
+  #   cmd: |
+  #     /opt/llama-cpp/bin/llama-server
+  #     --port ${PORT}
+  #     --model /models/blobs/<sha256-REPLACE-ME>
+  #     --alias deepseek-r1-32b
+  #     --host 127.0.0.1
+  #     -ngl 99
+  #     -c 32768
+  #     --device SYCL0
+  #     -sm none
+  #   ttl: 600
+
+# Performance notes for Battlemage (B70, B60, B50):
+#
+#   * Prefer Q4_K_M quantization. Q8_0 runs ~4x slower due to a kernel
+#     regression: https://github.com/ggml-org/llama.cpp/issues/21517
+#
+#   * Do NOT add KV cache quantization flags (-ctk q8_0 -ctv q8_0). On
+#     current Battlemage SYCL kernels they regress decode throughput.
+#
+#   * Flash attention (-fa) is model-dependent on Battlemage. Benchmark
+#     per-model before enabling globally.
+#
+#   * --device SYCL0 targets the first Level-Zero GPU. If you have multiple
+#     Arc cards, use SYCL0 / SYCL1 / etc. Check discovery with:
+#       docker compose run --rm llama-swap sycl-ls

@@ -1,0 +1,14 @@
+# User's local config — bind-mounted, not tracked in git.
+# Start from config/llama-swap.example.yaml.
+config/llama-swap.yaml
+
+# Local environment overrides for GIDs / paths
+.env
+
+# Editor / OS cruft
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
