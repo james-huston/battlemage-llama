@@ -118,12 +118,12 @@ Also check disk read speed — if GGUFs live on a spinning HDD, first-load is pa
 
 The container runs llama-swap with `--watch-config`, so editing `config/llama-swap.yaml` on the host should hot-reload automatically. If it doesn't:
 
-- Make sure you're editing the right file. The bind-mount is `./config/llama-swap.yaml:/config/llama-swap.yaml:ro` — that's relative to where you run `docker compose`. Check inside the container:
+- Make sure you're editing the right file. The compose file binds the whole `./config` directory at `/config` — that's relative to where you run `docker compose`. Check inside the container:
   ```bash
   docker compose exec llama-swap cat /config/llama-swap.yaml
   ```
 
-- Some editors (VS Code on Windows via WSL, for instance) write files via rename-and-replace, which can confuse inotify. Force a reload by bouncing the service:
+- **Inode mismatch**: many editors (including most atomic-save flows — VS Code, `$EDITOR` backed by vim with `:w`, Claude Code's own write tool) save a file by writing to a temp file and renaming over the original. That replaces the file's inode. If you ever see a `docker-compose.yml` with a bind mount pointing at a single file (`./config/llama-swap.yaml:/config/llama-swap.yaml`), every such save silently "disconnects" the mount: the container keeps showing the old contents and `--watch-config` never fires. The compose file in this repo binds the *directory* (`./config:/config`) to avoid that. If you've customized it, revert to the directory-level bind, or bounce the service after every edit:
   ```bash
   docker compose restart llama-swap
   ```

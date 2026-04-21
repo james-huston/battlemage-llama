@@ -11,26 +11,67 @@ ARG ONEAPI_IMAGE_TAG=2025.3.0-0-devel-ubuntu24.04
 FROM intel/oneapi-basekit:${ONEAPI_IMAGE_TAG}
 
 # -----------------------------------------------------------------------------
-# System + Intel graphics runtime
+# System packages + Level Zero loader
 #
-# The base image already registers the Intel graphics APT repository
-# (repositories.intel.com/gpu/ubuntu noble unified). We install the current
-# Level Zero GPU driver + OpenCL ICD from it. As of April 2026, this channel
-# ships compute-runtime 26.09+, which recognizes Battlemage B70 (PCI 0xe223).
-#
-# If this image fails to detect your B70 (run `docker compose run --rm
-# llama-swap sycl-ls` — look for `[level_zero:gpu]` with your device ID),
-# override with a newer compute-runtime by rebuilding with a manual install.
-# See docs/troubleshooting.md for the fallback procedure.
+# `libze1` = the generic Level Zero loader (from intel/level-zero). It's
+# separate from libze-intel-gpu1 (the Battlemage driver implementation).
+# We install libze1 from the oneAPI/intel-graphics apt repo since that's
+# well-maintained; the GPU-specific driver we'll override below.
 # -----------------------------------------------------------------------------
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         git cmake ninja-build build-essential pkg-config \
-        ca-certificates curl wget \
-        libze-intel-gpu1 libze1 intel-opencl-icd clinfo && \
+        ca-certificates curl wget clinfo \
+        libze1 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# -----------------------------------------------------------------------------
+# Intel graphics driver (compute-runtime + IGC) from GitHub releases
+#
+# We bypass Intel's apt repository (repositories.intel.com/gpu/ubuntu noble)
+# because its 'unified' channel lags upstream — as of April 2026 it ships
+# 25.18, which does NOT recognize Battlemage B70 (device 0xe223). Observed
+# failure mode: `sycl-ls` reports `Platforms: 0` inside the container.
+#
+# Installing directly from GitHub gives us 26.09.37435.1, which is known-good
+# on the B70 (confirmed in llama.cpp issue #21517 and on the maintainer's rig).
+#
+# To bump versions:
+#   * https://github.com/intel/compute-runtime/releases → COMPUTE_RUNTIME_VERSION
+#   * https://github.com/intel/intel-graphics-compiler/releases → IGC_VERSION + IGC_BUILD
+#   * libigdgmm12 version can float independently; pin whatever the compute-runtime
+#     release notes recommend (usually stable across several compute-runtime releases).
+#
+# Override at build time:
+#   docker compose build \
+#     --build-arg COMPUTE_RUNTIME_VERSION=26.11.xxxxx.x \
+#     --build-arg IGC_VERSION=2.31.0 \
+#     --build-arg IGC_BUILD=21000
+# -----------------------------------------------------------------------------
+ARG COMPUTE_RUNTIME_VERSION=26.09.37435.1
+ARG IGC_VERSION=2.30.1
+ARG IGC_BUILD=20950
+ARG GMMLIB_VERSION=22.9.0
+
+RUN mkdir -p /tmp/neo && cd /tmp/neo && \
+    # IGC (Intel Graphics Compiler)
+    wget -q "https://github.com/intel/intel-graphics-compiler/releases/download/v${IGC_VERSION}/intel-igc-core-2_${IGC_VERSION}+${IGC_BUILD}_amd64.deb" && \
+    wget -q "https://github.com/intel/intel-graphics-compiler/releases/download/v${IGC_VERSION}/intel-igc-opencl-2_${IGC_VERSION}+${IGC_BUILD}_amd64.deb" && \
+    # GMM library (graphics memory manager)
+    wget -q "https://github.com/intel/compute-runtime/releases/download/${COMPUTE_RUNTIME_VERSION}/libigdgmm12_${GMMLIB_VERSION}_amd64.deb" && \
+    # compute-runtime: Level Zero GPU driver + OpenCL ICD + ocloc compiler tool
+    wget -q "https://github.com/intel/compute-runtime/releases/download/${COMPUTE_RUNTIME_VERSION}/libze-intel-gpu1_${COMPUTE_RUNTIME_VERSION}-0_amd64.deb" && \
+    wget -q "https://github.com/intel/compute-runtime/releases/download/${COMPUTE_RUNTIME_VERSION}/intel-opencl-icd_${COMPUTE_RUNTIME_VERSION}-0_amd64.deb" && \
+    wget -q "https://github.com/intel/compute-runtime/releases/download/${COMPUTE_RUNTIME_VERSION}/intel-ocloc_${COMPUTE_RUNTIME_VERSION}-0_amd64.deb" && \
+    # Install — apt handles conflicts with whatever the base image shipped
+    apt-get update && \
+    apt-get install -y --no-install-recommends ./*.deb && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/neo && \
+    # Verify the override took effect
+    dpkg -l libze-intel-gpu1 intel-opencl-icd
 
 # -----------------------------------------------------------------------------
 # Build llama.cpp with SYCL backend

@@ -49,8 +49,10 @@ services:
       - "${VIDEO_GID:-44}"
 
     volumes:
-      # Your llama-swap config — hot-reloaded when you edit this file
-      - ./config/llama-swap.yaml:/config/llama-swap.yaml:ro
+      # Your llama-swap config directory. We bind the *directory* (not the
+      # single file) so that --watch-config picks up edits — most editors
+      # replace the file's inode on save, which breaks single-file binds.
+      - ./config:/config:ro
 
       # Your GGUF models. Default: reuse Ollama's blob store.
       # Override with MODELS_DIR env in .env if your GGUFs live elsewhere.
