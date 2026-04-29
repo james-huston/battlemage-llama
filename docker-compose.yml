@@ -58,6 +58,11 @@ services:
       # Override with MODELS_DIR env in .env if your GGUFs live elsewhere.
       - ${MODELS_DIR:-/opt/apps/ollama-models}:/models:ro
 
+      # Tool-aware Jinja chat templates for models whose embedded GGUF
+      # template lacks tool-calling branches. Referenced from
+      # config/llama-swap.yaml via --chat-template-file.
+      - ./templates:/templates:ro
+
     # Larger shared memory for bigger contexts / batch sizes
     shm_size: "8gb"
 
