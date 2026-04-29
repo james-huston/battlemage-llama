@@ -106,7 +106,7 @@ RUN git clone --depth 1 --branch ${LLAMA_CPP_REF} \
 # Override version at build time if needed:
 #   docker compose build --build-arg LLAMA_SWAP_VERSION=200
 # -----------------------------------------------------------------------------
-ARG LLAMA_SWAP_VERSION=198
+ARG LLAMA_SWAP_VERSION=208
 RUN wget -qO /tmp/llama-swap.tar.gz \
         "https://github.com/mostlygeek/llama-swap/releases/download/v${LLAMA_SWAP_VERSION}/llama-swap_${LLAMA_SWAP_VERSION}_linux_amd64.tar.gz" && \
     mkdir -p /opt/llama-swap/bin && \
