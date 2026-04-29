@@ -36,21 +36,33 @@
 #
 # MEASURED ON ARC PRO B70, llama.cpp master @ 2026-04-29:
 #
-#                          decode  prefill  tool-calling   notes
-#   qwen3-coder-30b        ~83 t/s  ~44 t/s  full          MoE A3B; fastest
-#   qwen3-30b-a3b          ~83 t/s  ~33 t/s  full          MoE A3B reasoning
-#   glm-4.7-flash-q4       ~42 t/s ~109 t/s  full          MoE A12B coder/agent
-#   glm-4.7-flash-q5       ~36 t/s  ~34 t/s  full          MoE A12B, best quality
-#   ministral-3-14b-q4     ~48 t/s ~296 t/s  partial(*)    14B reasoning, 128k ctx
-#   ministral-3-14b-q5     ~27 t/s ~313 t/s  partial(*)
-#   magistral-small-2509   ~29 t/s ~207 t/s  partial(*)    24B reasoning, Mistral
-#   devstral-small-2-q4    ~28 t/s ~727 t/s  partial(*)    24B SWE-Bench leader
-#   devstral-small-2-q5    ~16 t/s ~809 t/s  full          24B at Q5 (slowest)
+#                          decode  prefill  tool   max ctx  notes
+#   qwen3-coder-30b        ~83 t/s  ~44 t/s  full   128k    MoE A3B; fastest
+#   qwen3-30b-a3b          ~83 t/s  ~33 t/s  full   128k    MoE A3B reasoning
+#   glm-4.7-flash-q4       ~42 t/s ~109 t/s  full   128k    MoE A12B coder/agent
+#   glm-4.7-flash-q5       ~36 t/s  ~34 t/s  full    64k    MoE A12B, Q5 = best quality
+#   ministral-3-14b-q4     ~48 t/s ~296 t/s  partial(*) 128k 14B reasoning
+#   ministral-3-14b-q5     ~27 t/s ~313 t/s  partial(*) 128k
+#   magistral-small-2509   ~29 t/s ~207 t/s  partial(*)  64k 24B reasoning, Mistral
+#   devstral-small-2-q4    ~28 t/s ~727 t/s  partial(*)  64k 24B SWE-Bench leader
+#   devstral-small-2-q5    ~16 t/s ~809 t/s  full        64k 24B at Q5 (slowest)
 #
 #   (*) Mistral-family models often ignore tool_choice="required" — they emit
 #       a normal answer instead of forcing a call. Don't rely on that flag.
 #       Q5 of Mistral models can additionally fail the multi-turn round-trip
 #       test because Mistral's Jinja enforces 9-char alphanumeric tool-call IDs.
+#
+# CONTEXT-SIZE NOTES:
+#   * MoE models with small active params (Qwen3 A3B, GLM-4.7 A12B Q4) handle
+#     128k cleanly — KV is small relative to weights.
+#   * GLM-4.7-Flash Q5 (20 GiB weights) is capped at 64k because 128k KV
+#     would saturate the 32 GiB VRAM with no margin.
+#   * Dense 24B Mistral models (Magistral, Devstral-2 Q4 and Q5) **segfault
+#     llama-server during the warmup pass at -c 131072** on Battlemage SYCL.
+#     KV allocates fine, the crash happens later. Cap them at -c 65536 until
+#     a fix lands upstream. (Suspected SYCL kernel-grid limit; not filed yet.)
+#   * If you push past these limits, the kernel may also OOM-segfault rather
+#     than fall back gracefully. Test new configurations before deploying.
 #
 # Decode rates above are with empty/short context. Prefill rates have wide
 # variance — short prompts are dominated by setup overhead. For real prefill
@@ -78,7 +90,7 @@ models:
   #     --alias qwen3-coder-30b
   #     --host 127.0.0.1
   #     -ngl 99
-  #     -c 32768
+  #     -c 131072
   #     --device SYCL0
   #     -sm none
   #     --jinja
@@ -97,7 +109,7 @@ models:
   #     --alias qwen3-30b-a3b
   #     --host 127.0.0.1
   #     -ngl 99
-  #     -c 32768
+  #     -c 131072
   #     --device SYCL0
   #     -sm none
   #     --jinja
@@ -118,7 +130,7 @@ models:
   #     --alias glm-4.7-flash-q4
   #     --host 127.0.0.1
   #     -ngl 99
-  #     -c 32768
+  #     -c 131072
   #     --device SYCL0
   #     -sm none
   #     --jinja
@@ -130,6 +142,7 @@ models:
 
   # glm-4.7-flash-q5:
   #   # Same as q4 but Q5_K_M (~20 GiB weights). Higher quality, slightly slower.
+  #   # Capped at 64k — at 128k the KV would saturate VRAM with no margin.
   #   cmd: |
   #     /opt/llama-cpp/bin/llama-server
   #     --port ${PORT}
@@ -137,7 +150,7 @@ models:
   #     --alias glm-4.7-flash-q5
   #     --host 127.0.0.1
   #     -ngl 99
-  #     -c 32768
+  #     -c 65536
   #     --device SYCL0
   #     -sm none
   #     --jinja
@@ -155,6 +168,9 @@ models:
   # Recommended sampler: --temp 0.15 (Mistral's published agent-mode value).
   # ---------------------------------------------------------------------------
   # devstral-small-2-q4:
+  #   # Capped at 64k — dense 24B Mistrals segfault llama-server during the
+  #   # warmup pass at -c 131072 on Battlemage SYCL. See "context-size notes"
+  #   # at the top of this file.
   #   cmd: |
   #     /opt/llama-cpp/bin/llama-server
   #     --port ${PORT}
@@ -162,7 +178,7 @@ models:
   #     --alias devstral-small-2-q4
   #     --host 127.0.0.1
   #     -ngl 99
-  #     -c 32768
+  #     -c 65536
   #     --device SYCL0
   #     -sm none
   #     --jinja
@@ -171,6 +187,8 @@ models:
   #   ttl: 600
 
   # devstral-small-2-q5:
+  #   # Capped at 64k for the same reason as q4, plus VRAM tightness at Q5
+  #   # (16 GiB weights + 16 GiB KV at 128k saturates the 32 GiB card).
   #   cmd: |
   #     /opt/llama-cpp/bin/llama-server
   #     --port ${PORT}
@@ -178,7 +196,7 @@ models:
   #     --alias devstral-small-2-q5
   #     --host 127.0.0.1
   #     -ngl 99
-  #     -c 32768
+  #     -c 65536
   #     --device SYCL0
   #     -sm none
   #     --jinja
@@ -196,6 +214,7 @@ models:
   # GGUF: bartowski / unsloth / mradermacher.
   # ---------------------------------------------------------------------------
   # magistral-small-2509:
+  #   # Capped at 64k — same dense-24B-Mistral segfault as Devstral at 128k.
   #   cmd: |
   #     /opt/llama-cpp/bin/llama-server
   #     --port ${PORT}
@@ -203,7 +222,7 @@ models:
   #     --alias magistral-small-2509
   #     --host 127.0.0.1
   #     -ngl 99
-  #     -c 40960
+  #     -c 65536
   #     --device SYCL0
   #     -sm none
   #     --jinja
@@ -224,7 +243,27 @@ models:
   #     --alias ministral-3-14b-q4
   #     --host 127.0.0.1
   #     -ngl 99
-  #     -c 32768
+  #     -c 131072
+  #     --device SYCL0
+  #     -sm none
+  #     --jinja
+  #     --chat-template-file /templates/ministral-3-reasoning.jinja
+  #     --reasoning-format deepseek
+  #     --temp 0.7
+  #     --top-p 0.95
+  #   ttl: 600
+
+  # ministral-3-14b-q5:
+  #   # Same as q4 but Q5_K_M (~9 GiB). 14B is small enough that 128k still
+  #   # has plenty of headroom. Q4 currently outperforms Q5 on tool-use tests.
+  #   cmd: |
+  #     /opt/llama-cpp/bin/llama-server
+  #     --port ${PORT}
+  #     --model /models/ministral-3-14b-reasoning/Q5_K_M.gguf
+  #     --alias ministral-3-14b-q5
+  #     --host 127.0.0.1
+  #     -ngl 99
+  #     -c 131072
   #     --device SYCL0
   #     -sm none
   #     --jinja
