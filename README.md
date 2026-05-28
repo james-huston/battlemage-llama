@@ -114,6 +114,40 @@ You do NOT need Ollama installed. The default `docker-compose.yml` bind-mounts `
 
 If you downloaded GGUFs from Hugging Face directly, point `MODELS_DIR` at wherever they live (set in `.env`) and adjust the `--model` paths in your `config/llama-swap.yaml` accordingly. Inside the container, whatever you bind-mount shows up at `/models/`.
 
+## Adding models with `make`
+
+The `Makefile` wraps `scripts/add-model.sh` to download a GGUF from Hugging Face
+into `MODELS_DIR` and append a ready-to-run block (with the Battlemage defaults —
+`-ngl 99 --device SYCL0 -sm none --jinja`) to `config/llama-swap.yaml`:
+
+```bash
+# Download + register in one step
+make add-model \
+    REPO=unsloth/GLM-4.7-Flash-GGUF \
+    FILE=GLM-4.7-Flash-Q4_K_XL.gguf \
+    NAME=glm-4.7-flash-q4 DIR=glm-4.7-flash OUT=Q4_K_XL.gguf \
+    CTX=131072 TEMPLATE=glm-4.7-flash.jinja REASONING=1 TEMP=0.6 TOP_P=0.95
+
+make list-models            # show aliases already in the config
+make help                   # all targets + the full variable list
+```
+
+| Var | Meaning |
+| --- | --- |
+| `REPO` / `FILE` | Hugging Face repo id and filename (`FILE` may be a glob/split set — needs the `hf` / `huggingface-cli`; otherwise `curl`/`wget` fetches a single file) |
+| `NAME` | model alias (the OpenAI `model` id) |
+| `DIR` / `OUT` | subdir under `MODELS_DIR` (default `NAME`) and save-as filename (default the repo filename) |
+| `CTX` | `-c` context size — keep dense 24B Mistrals at `65536` (they segfault at 128k on SYCL) |
+| `TEMPLATE` | a Jinja file in `templates/` → `--chat-template-file` |
+| `REASONING=1`, `TEMP`, `TOP_P`, `EXTRA` | add `--reasoning-format deepseek`, samplers, or extra flags |
+
+Other entrypoints: `make download-model` (fetch only), `make add-config`
+(register an already-present GGUF, e.g. an Ollama blob via `MODEL_PATH=`), and
+`make find-blobs` (the original Ollama blob mapper). Add `DRY_RUN=1` to preview
+the config block without writing it. llama-swap hot-reloads the config, so the
+next request to the new alias spawns it — then validate with
+`./tests/tool_use/run.sh <NAME>`.
+
 ## Documentation
 
 - [`docs/host-setup.md`](docs/host-setup.md) — host driver / kernel setup for Battlemage on Ubuntu 25.10
