@@ -134,6 +134,38 @@ This is normal for LLM decode — it's memory-bandwidth-bound, not compute-bound
 
 Prompt prefill on a long prompt (several thousand tokens) should saturate the compute engines — if you want to see the card really light up, send a big input.
 
+## LiteLLM returns `Ollama_chatException` / 500 for models on this endpoint
+
+```
+litellm.APIConnectionError: Ollama_chatException - .
+Received Model Group=deepseek-r1:32b
+```
+
+This stack is **not** Ollama. llama-swap speaks the OpenAI API (`/v1/...`) only —
+it has no Ollama-native endpoints (`/api/chat`, `/api/tags` return 404). If a
+LiteLLM model is configured with the `ollama`/`ollama_chat` provider pointing at
+port 11434, it'll fail the moment battlemage-llama replaces a real Ollama that
+used to sit there. Verify the mismatch:
+
+```bash
+curl -s http://<host>:11434/v1/models | jq        # works  (OpenAI API)
+curl -s -o /dev/null -w '%{http_code}\n' http://<host>:11434/api/tags   # 404 (no Ollama API)
+```
+
+Fix: register each model in LiteLLM with the **openai** provider and the `/v1`
+api_base, e.g.
+
+```yaml
+litellm_params:
+  model: openai/qwen3-coder-30b           # not ollama_chat/...
+  api_base: http://<host>:11434/v1        # note the /v1
+  api_key: dummy
+```
+
+`make sync-litellm` writes exactly this and removes stale entries (like a
+left-over `deepseek-r1:32b`). Then confirm each model actually answers through
+the proxy with `make test-models VIA=litellm`.
+
 ## Older errors that shouldn't happen with this repo, but just in case
 
 - **`sycl::_V1::exception: No device of requested type available`** — this was the failure mode of `intelanalytics/ipex-llm-inference-cpp-xpu`. Their compute-runtime predated Battlemage. This repo's image builds on a newer base; if you somehow still see this, follow the "fallback compute-runtime install" in the section above.

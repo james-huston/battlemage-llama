@@ -40,8 +40,11 @@ MODEL_ARGS := \
 	$(if $(EXTRA),--extra "$(EXTRA)") \
 	$(if $(DRY_RUN),--dry-run)
 
+SYNC := $(SCRIPTS)/sync-litellm.py
+TEST := $(SCRIPTS)/test-models.py
+
 .DEFAULT_GOAL := help
-.PHONY: help add-model download-model add-config list-models find-blobs
+.PHONY: help add-model download-model add-config list-models find-blobs sync-litellm test-models
 
 help: ## Show this help
 	@echo "battlemage-llama — make targets:"
@@ -72,3 +75,24 @@ list-models: ## List the model aliases currently in the config
 
 find-blobs: ## Map local Ollama models to container blob paths
 	@$(SCRIPTS)/find-gguf-blobs.sh $(MODELS_DIR)
+
+sync-litellm: ## Mirror llama-swap's models into a LiteLLM proxy (adds new, deletes stale)
+	@$(SYNC) \
+		$(if $(UPSTREAM),--upstream $(UPSTREAM)) \
+		$(if $(LITELLM),--litellm $(LITELLM)) \
+		$(if $(API_BASE),--api-base $(API_BASE)) \
+		$(if $(MODEL_API_KEY),--model-api-key $(MODEL_API_KEY)) \
+		$(if $(PROVIDER),--provider $(PROVIDER)) \
+		$(if $(DRY_RUN),--dry-run) \
+		$(if $(NO_DELETE),--no-delete) \
+		$(if $(RESET),--reset)
+
+test-models: ## Load each served model and run a smoke query (VIA=upstream|litellm, MODELS=subset)
+	@$(TEST) \
+		$(if $(VIA),--via $(VIA)) \
+		$(if $(BASE),--base $(BASE)) \
+		$(if $(API_KEY),--api-key $(API_KEY)) \
+		$(if $(MAX_TOKENS),--max-tokens $(MAX_TOKENS)) \
+		$(if $(TIMEOUT),--timeout $(TIMEOUT)) \
+		$(if $(PROMPT),--prompt "$(PROMPT)") \
+		$(MODELS)

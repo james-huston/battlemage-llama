@@ -5,6 +5,10 @@ config/llama-swap.yaml
 # Local environment overrides for GIDs / paths
 .env
 
+# Python bytecode cache (the helper scripts are Python)
+__pycache__/
+*.pyc
+
 # Editor / OS cruft
 .DS_Store
 .vscode/

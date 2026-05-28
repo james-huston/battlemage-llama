@@ -148,6 +148,58 @@ the config block without writing it. llama-swap hot-reloads the config, so the
 next request to the new alias spawns it — then validate with
 `./tests/tool_use/run.sh <NAME>`.
 
+## Syncing models to a LiteLLM proxy
+
+If you front this stack with [LiteLLM](https://github.com/BerriAI/litellm),
+`scripts/sync-litellm.py` (`make sync-litellm`) makes LiteLLM's model list
+mirror what llama-swap serves: it reads `GET {upstream}/v1/models`, then adds
+any missing model to LiteLLM, deletes any LiteLLM-managed model that's no
+longer served, and re-points a model whose `api_base` drifted. Models baked
+into LiteLLM's static `config.yaml` (not DB-managed) are left untouched.
+
+```bash
+# Put the admin key in gitignored .env (LITELLM_API_KEY=sk-...), then:
+make sync-litellm DRY_RUN=1          # preview the plan, change nothing
+make sync-litellm                    # apply: add new, delete stale
+```
+
+| Var / env | Meaning |
+| --- | --- |
+| `LITELLM_API_KEY` / `LITELLM_MASTER_KEY` | LiteLLM admin key (env or `.env`; never printed). Required. |
+| `LITELLM` / `LITELLM_URL` | LiteLLM proxy base URL (default `http://localhost:4000`) |
+| `UPSTREAM` / `UPSTREAM_URL` | llama-swap base URL the script reads `/v1/models` from (default `http://localhost:11434`) |
+| `API_BASE` / `MODEL_API_BASE` | `api_base` baked into each LiteLLM model. **If LiteLLM runs on another host, this must be routable from there** — use the model server's IP/hostname, not `localhost` (e.g. `http://10.0.0.5:11434/v1`). |
+| `NO_DELETE=1` | only add/re-point, never delete |
+
+Run it after `make add-model` to keep LiteLLM in lockstep. It needs no extra
+dependencies (Python 3 stdlib only).
+
+> **Provider gotcha:** llama-swap is OpenAI-compatible, *not* Ollama. Models in
+> LiteLLM must use the `openai/` provider with an `/v1` `api_base` — an
+> `ollama`/`ollama_chat` provider pointed at port 11434 fails with
+> `Ollama_chatException`. `sync-litellm` registers the right provider; see
+> [`docs/troubleshooting.md`](docs/troubleshooting.md).
+
+## Smoke-testing models
+
+`scripts/test-models.py` (`make test-models`) cycles through every model an
+endpoint advertises, sends a real chat query to each (which forces llama-swap to
+cold-load it), and reports pass/fail — handy for confirming a fresh model works
+or bisecting which registered models are broken.
+
+```bash
+make test-models                       # test every model on llama-swap directly
+make test-models VIA=litellm           # test each model through the LiteLLM proxy
+make test-models MODELS=glm-4.7-flash-q4   # just one (or a space-separated subset)
+```
+
+Because only one model fits in VRAM at a time, it's sequential and each model is
+a cold start (expect ~10-30s apiece). A model that loads but returns no visible
+text — usually a thinking model that spent the token budget reasoning — is
+reported as `WARN`, not `FAIL`; bump `MAX_TOKENS` for those. Exit code is
+non-zero if any model fails. Knobs: `VIA`, `BASE`, `API_KEY`, `MAX_TOKENS`,
+`TIMEOUT`, `PROMPT` (also Python 3 stdlib only).
+
 ## Documentation
 
 - [`docs/host-setup.md`](docs/host-setup.md) — host driver / kernel setup for Battlemage on Ubuntu 25.10
