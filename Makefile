@@ -43,9 +43,10 @@ MODEL_ARGS := \
 SYNC := $(SCRIPTS)/sync-litellm.py
 TEST := $(SCRIPTS)/test-models.py
 APPLY := $(SCRIPTS)/apply-models.py
+STATUS := $(SCRIPTS)/status.py
 
 .DEFAULT_GOAL := help
-.PHONY: help add-model download-model add-config list-models find-blobs sync-litellm test-models models-apply
+.PHONY: help add-model download-model add-config list-models find-blobs sync-litellm test-models models-apply status
 
 help: ## Show this help
 	@echo "battlemage-llama — make targets:"
@@ -68,6 +69,9 @@ download-model: ## Download a GGUF only (no config change)
 
 add-config: ## Add a config block only (no download; needs OUT or MODEL_PATH)
 	@$(ADD) --no-download $(MODEL_ARGS)
+
+status: ## Show the currently loaded model + its CPU/RAM and GPU power/VRAM
+	@$(STATUS)
 
 list-models: ## List the model aliases currently in the config
 	@test -f $(CONFIG) || { echo "no config at $(CONFIG) (cp config/llama-swap.example.yaml $(CONFIG))"; exit 1; }
