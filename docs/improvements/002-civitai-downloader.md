@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft
+Review
 
 ## Story
 
@@ -39,53 +39,55 @@ Pony** ([Civitai 443821](https://civitai.com/models/443821/cyberrealistic-pony))
 
 ## Tasks / Subtasks
 
-- [ ] **Spike — pin the Civitai download API specifics** (AC: 1, 2)
-  - [ ] Confirm `GET https://civitai.com/api/v1/model-versions/{versionId}`
-        response shape and whether `files[].primary` is reliable for picking
-        the checkpoint to fetch
-  - [ ] Confirm the direct download URL pattern
-        (`/api/download/models/{versionId}` vs `files[].downloadUrl`) and
-        how the signed-CDN redirect plays with `curl -L` + Bearer auth
-  - [ ] Decide on the v1 syntax: **`civitai:<modelVersionId>`** (explicit pin,
-        reproducible — recommended) vs `civitai:<modelId>` (auto-latest, easier
-        but version-drifts). The user-visible Civitai URL `civitai.com/models/<modelId>/…`
-        is the model id; downloads use a different version id.
-  - [ ] Note any gating that even auth doesn't bypass (some files require
-        accepting terms on the web UI first)
-- [ ] **`scripts/add-model.sh` — Civitai branch** (AC: 1, 2, 3, 7, 8)
-  - [ ] Detect `REPO=civitai:<id>` prefix; make `FILE` optional (defaults to
-        the version's primary file)
-  - [ ] Fetch version metadata via `curl`; pick the primary `.safetensors`;
-        download with `curl -L -C - …` and Bearer auth when `CIVITAI_API_KEY`
-        is set
-  - [ ] Save under `OUT=` if given, else the metadata `name`; verify the
-        `SHA256` hash if Civitai provides one
-  - [ ] Map HTTP 401/403/404 to the clear hints from AC8; never log the API key
-- [ ] **Manifest / generator integration** (AC: 4)
-  - [ ] Document `repo: civitai:<id>` in `models.yaml`'s schema-comment header
-  - [ ] Verify `apply-models.py` needs no code change (it shells out to
-        `add-model.sh` — if not, branch the download path)
-- [ ] **`.env.example`** (AC: 6)
-  - [ ] Add a commented `CIVITAI_API_KEY=` block with a one-line explanation
-- [ ] **Add CyberRealistic Pony** (AC: 5)
-  - [ ] `make add-model REPO=civitai:<versionId> NAME=cyberrealistic-pony \
-        DIR=cyberrealistic-pony` to download
-  - [ ] Add the `models.yaml` entry (`engine: sd-server`, `litellm.description`
-        notes the Pony score-tag prompt convention), `make models-apply`,
-        `make sync-litellm`
-  - [ ] Smoke test: `POST /v1/images/generations` returns a valid PNG;
-        `make status` shows the model resident
-- [ ] **Regression** (AC: 5, 7)
-  - [ ] An HF download via `add-model.sh` still works (e.g. one tiny test or
-        rely on the unchanged HF code path)
-  - [ ] `make test-models` still green (image models skipped);
-        `make sync-litellm` idempotent on existing LLM entries
-- [ ] **Docs** (AC: 6, 8)
-  - [ ] README: an "Adding a Civitai model" subsection under image generation
-        with the `civitai:` syntax, the `.env` key, and the Pony prompt
-        convention
-  - [ ] `docs/troubleshooting.md`: Civitai 401/403/404 entries
-  - [ ] Flip this story to `Review`, update the tracker
+- [x] **Spike — pin the Civitai download API specifics** (AC: 1, 2)
+  - [x] `GET /api/v1/model-versions/{versionId}` returns `files: [{name,
+        primary, type, sizeKB, hashes.SHA256, downloadUrl}]`. `primary: true`
+        is reliable for picking the pruned checkpoint (e.g. v18.0 CoreShift has
+        a 6.5 GB primary + a 13.5 GB FP32 secondary).
+  - [x] `files[].downloadUrl` (== `/api/download/models/{versionId}`) returns a
+        307 to a Cloudflare R2 signed URL. `curl -L` follows it; Bearer header
+        is stripped by curl on cross-host redirect (safe). HEAD returns 403
+        (R2 signed URLs are GET-only); a real GET works (verified via 1 KB
+        range request → HTTP 206, binary stream).
+  - [x] v1 syntax: **`civitai:<modelVersionId>`** (explicit pin, reproducible).
+        404 on metadata triggers a clear hint pointing at the model-id-vs-
+        version-id distinction.
+- [x] **`scripts/add-model.sh` — Civitai branch** (AC: 1, 2, 3, 7, 8)
+  - [x] `REPO=civitai:<id>` dispatches into `civitai_download()`; `FILE` is
+        optional (defaults to the version's `primary` file)
+  - [x] Fetches version metadata; downloads with `curl -SL -C -` (resume) and
+        Bearer auth from `CIVITAI_API_KEY` (env > `.env`)
+  - [x] Saves as `OUT=` if given, else the Civitai-reported `name`; SHA256
+        is verified after download — confirmed `sha256: OK` on the real run
+  - [x] 401/403/404 mapped to actionable messages; API key never logged
+- [x] **Manifest / generator integration** (AC: 4)
+  - [x] Documented `repo: civitai:<id>` in `models.yaml`'s schema-comment
+  - [x] `apply-models.py`: relaxed `file:` so it's optional when `repo: civitai:…`
+        + `out:` is set; the subprocess call to `add-model.sh` now passes
+        `--file` only when provided
+- [x] **`.env.example`** (AC: 6)
+  - [x] Added a commented `CIVITAI_API_KEY=` block with a one-line note
+- [x] **Add CyberRealistic Pony** (AC: 5)
+  - [x] `make download-model REPO=civitai:2884631 NAME=cyberrealistic-pony \
+        DIR=cyberrealistic-pony OUT=cyberrealistic-pony.safetensors` downloaded
+        the 6.5 GB safetensors at ~83 MB/s in 1m 19s, SHA256 verified.
+  - [x] Manifest entry added (`engine: sd-server`, Pony score-tag note in
+        `notes:`); `make models-apply` → 16 enabled; `make sync-litellm`
+        added 1 (LLMs untouched).
+  - [x] `POST /v1/images/generations` returned a valid `1024×1024 8-bit RGB PNG`
+        (~1.9 MB, 28.5 s) on the B70; `make status` shows it resident at
+        6.8 GiB VRAM.
+- [x] **Regression** (AC: 5, 7)
+  - [x] HF download path unchanged (`add-model.sh` only adds a `civitai:`
+        dispatch at the top of `download()`; the HF branch is byte-identical)
+  - [x] `make test-models` still green from story 001; `make sync-litellm`
+        idempotent on the LLM entries (+1 add, 0 re-point/delete)
+- [x] **Docs** (AC: 6, 8)
+  - [x] README image-generation section: "Civitai sources" paragraph with the
+        `civitai:` syntax, the `.env` key, the Pony score-tag prompt convention
+  - [x] `docs/troubleshooting.md`: "Civitai downloads fail" with 401/403/404
+        and SHA256-mismatch hints
+  - [x] Tracker updated; story → Review
 
 ## Dev Notes
 
@@ -143,16 +145,68 @@ Pony** ([Civitai 443821](https://civitai.com/models/443821/cyberrealistic-pony))
   `add-model.sh`; `make test-models` stays green (image models skipped);
   `make sync-litellm` only adds the new entry, leaving LLMs untouched.
 
+### Validation findings (2026-05-29, on the live system)
+
+- **Spike**: Civitai REST + signed-CDN download chain verified with a 1 KB
+  range GET on the live API — HTTP 206, `binary/octet-stream`. `primary: true`
+  identifies the pruned ~6.5 GB SDXL checkpoint cleanly.
+- **`add-model.sh`** civitai branch: downloaded `cyberrealisticPony_v180Coreshift.safetensors`
+  (6.5 GB) in 1m 19s @ ~83 MB/s, renamed to `cyberrealistic-pony.safetensors`
+  via `--out`, **SHA256 matched** the value from Civitai metadata.
+- **`apply-models.py`**: `make models-apply NO_DOWNLOAD=1` regenerated the
+  config with 16 models (+1 cyberrealistic-pony). The first run would have
+  driven the download via the new branch automatically too.
+- **End-to-end via llama-swap**: `POST /v1/images/generations` with the
+  `score_9, score_8_up, score_7_up, …` Pony prompt convention returned a
+  valid `1024×1024 8-bit RGB PNG` (1.9 MB) in **28.5 s**.
+- **State**: `make status` shows the model resident at 6.8 GiB VRAM (matches
+  the SDXL envelope); `make sync-litellm` registered it with
+  `mode: image_generation` and **left every existing entry untouched**
+  (+1 add, 0 re-point, 0 delete).
+
 ## Change Log
 
 | Date | Version | Description | Author |
 |------|---------|-------------|--------|
 | 2026-05-29 | 0.1 | Initial draft (planning; PR stacked on story 001) | James Huston / Claude |
+| 2026-05-29 | 1.0 | Implemented + validated (CyberRealistic Pony 1024² @ 28.5 s; SHA256 OK). Status → Review. | Claude |
 
 ## Dev Agent Record
 
 ### Completion Notes
 
+- Civitai support is additive — `add-model.sh` dispatches on the `civitai:`
+  REPO prefix at the top of `download()`; the HF branch is unchanged.
+- Reproducibility chose **version id** (not model id) — the user looks up the
+  modelVersionId on Civitai's UI. A model-id auto-latest variant could be a
+  future enhancement if it turns out to be friction.
+- One small generator change beyond the script: `apply-models.py` now accepts
+  manifest entries without `file:` when the source is `civitai:` and `out:` is
+  set (the local filename is then driven by `out:`).
+
 ### File List
 
+- `scripts/add-model.sh` — `civitai_resolve_key()` + `civitai_download()`;
+  dispatch on `REPO=civitai:` in `download()`; FILE validation relaxed for civitai
+- `scripts/apply-models.py` — `model_path()` accepts civitai entries without
+  `file:`; `download_if_missing()` passes `--file` only when present
+- `models.yaml` — schema-comment header documents `civitai:` prefix;
+  `cyberrealistic-pony` entry (Civitai 2884631, `engine: sd-server`)
+- `.env.example` — adds `CIVITAI_API_KEY` (commented)
+- `README.md` — "Civitai sources" paragraph under image generation
+- `docs/troubleshooting.md` — "Civitai downloads fail" section
+
 ## QA Results
+
+- Functional: `add-model.sh REPO=civitai:2884631 …` downloads the primary file
+  (SHA256 verified) into `MODELS_DIR/cyberrealistic-pony/`. **PASS**
+- End-to-end: `POST /v1/images/generations` returns a valid 1024² PNG; the model
+  is resident in VRAM; `make status` reflects it. **PASS**
+- Auth: Bearer header from `CIVITAI_API_KEY` (via `.env`) accepted by Civitai
+  (metadata + download both return 200/206). **PASS**
+- Regression: HF code path unchanged in `add-model.sh`; existing chat models
+  still pass `make test-models`; `sync-litellm` only added the new entry.
+  **PASS**
+- Error mapping: 401/403/404 paths and SHA256 mismatch path each `die` with
+  an actionable hint (inspected; not exercised live in this session).
+  **PASS by inspection**
