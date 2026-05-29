@@ -85,6 +85,30 @@ def openai_base(url):
     return u
 
 
+def image_models():
+    """Names of non-chat models (engine != llama-server, or mode image_generation)
+    from models.yaml, so the chat smoke test can skip them. Empty if PyYAML or the
+    manifest is absent."""
+    path = os.path.join(REPO_ROOT, "models.yaml")
+    if not os.path.isfile(path):
+        return set()
+    try:
+        import yaml
+    except ImportError:
+        return set()
+    try:
+        manifest = yaml.safe_load(open(path, encoding="utf-8")) or {}
+    except Exception:
+        return set()
+    out = set()
+    for m in manifest.get("models") or []:
+        litellm = m.get("litellm") or {}
+        if (m.get("engine", "llama-server") != "llama-server"
+                or litellm.get("mode") == "image_generation") and m.get("name"):
+            out.add(m["name"])
+    return out
+
+
 def request(method, url, key, body, timeout):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
@@ -208,6 +232,14 @@ def main():
         models = [m for m in models if m in wanted]
         if not models:
             die("none of the requested models are advertised by this endpoint.")
+    else:
+        # Testing everything: skip non-chat (image) models — they don't speak
+        # /v1/chat/completions. Test them explicitly by name if you must.
+        skip = image_models()
+        hidden = [m for m in models if m in skip]
+        if hidden:
+            print(f"{DIM}skipping non-chat models: {', '.join(hidden)}{RESET}")
+        models = [m for m in models if m not in skip]
     print(f"testing {len(models)} model(s)\n")
     sys.stdout.flush()
 

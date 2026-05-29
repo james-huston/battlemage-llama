@@ -314,3 +314,21 @@ models:
       basic/multi/streaming/roundtrip all FAIL (same model-output bias as the
       rejected Qwen2.5-Coder-7B; no chat template fixes it). Keep ONLY as a
       code-gen / refactor / chat model.
+
+  # ===========================================================================
+  # IMAGE GENERATION — served by stable-diffusion.cpp's sd-server (engine:
+  # sd-server), swapped in by llama-swap. Reaches POST /v1/images/generations.
+  # ===========================================================================
+
+  - name: sdxl
+    enabled: true
+    engine: sd-server
+    repo: stabilityai/stable-diffusion-xl-base-1.0
+    file: sd_xl_base_1.0.safetensors
+    dir: sdxl
+    litellm:
+      description: "Stable Diffusion XL base 1.0 — text-to-image via sd-server/SYCL. POST /v1/images/generations."
+      mode: image_generation
+      supports_function_calling: false
+    source: "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0 (single-file checkpoint; sd.cpp loads .safetensors directly)"
+    notes: "Image generation (story 001). engine: sd-server -> /opt/sd-cpp/bin/sd-server. Per-image cost, not per-token, so no decode_tps/cost. Flux is a follow-up (needs split vae/t5/clip files)."
