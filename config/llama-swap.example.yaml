@@ -16,10 +16,12 @@
 #                                      (this repo's ./templates/ directory)
 #
 # PERFORMANCE NOTES for Battlemage (B70, B60, B50):
-#   * Prefer Q4_K_M / Q5_K_M. Q8_0 runs ~4× slower due to a kernel regression
-#     on Xe2: https://github.com/ggml-org/llama.cpp/issues/21517
-#   * Do NOT add KV cache quantization flags (-ctk q8_0 -ctv q8_0). Regresses
-#     decode throughput on current Battlemage SYCL kernels.
+#   * Q4_K_M / Q5_K_M are the sweet spot (fastest, smallest). Q8_0 USED to be
+#     ~4× slower on Xe2, but that kernel regression is fixed (llama.cpp #21527):
+#     now ~1.6× slower than Q4 (measured B70 Ministral-14B: 53 vs 32 t/s), so Q8_0
+#     is a viable quality option for models that fit. Was: #21517.
+#   * Do NOT add KV cache quantization flags (-ctk q8_0 -ctv q8_0) — a SEPARATE
+#     issue from Q8_0 weights; still regresses decode on Battlemage SYCL kernels.
 #   * Flash attention (-fa) is auto-enabled and works fine on Battlemage.
 #   * --device SYCL0 -sm none targets the first Level-Zero GPU only; check
 #     enumeration with `docker compose exec llama-swap sycl-ls`.

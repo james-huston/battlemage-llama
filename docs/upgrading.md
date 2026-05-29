@@ -154,7 +154,7 @@ several have already been fixed and more will be:
 
 | Area | Issue/PR | Status (2026-05) | Implication |
 | --- | --- | --- | --- |
-| Q8_0 ~4x slower than Q4 on Xe2 | [#21517](https://github.com/ggml-org/llama.cpp/issues/21517) / [#21527](https://github.com/ggml-org/llama.cpp/pull/21527) | **fixed** (Q8_0 added to SYCL reorder) | Q8_0 now ~3x faster — re-test before assuming "avoid Q8" |
+| Q8_0 ~4x slower than Q4 on Xe2 | [#21517](https://github.com/ggml-org/llama.cpp/issues/21517) / [#21527](https://github.com/ggml-org/llama.cpp/pull/21527) | **fixed + confirmed** | Measured on B70 (Ministral-14B): Q8_0 ~1.6x slower than Q4 (32 vs 53 t/s), not 4x. Q8_0 is viable now. |
 | `GGML_SYCL_F16` weight corruption on B70 | [#21893](https://github.com/ggml-org/llama.cpp/issues/21893) | **fixed** | This image builds with `-DGGML_SYCL_F16=ON`; validate output after rebuild |
 | "Brutally bad SYCL perf on Battlemage" | [#22413](https://github.com/ggml-org/llama.cpp/issues/22413) | **fixed** | General Xe2 throughput improvements |
 | Dense 24B Mistral segfault at `-c 131072` | (local finding) | open | Cap Magistral/Devstral-2 at `65536` |

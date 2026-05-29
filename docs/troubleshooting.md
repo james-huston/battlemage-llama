@@ -68,8 +68,8 @@ If `--help` errors with `error while loading shared libraries:` you have a dynam
 
 Several common causes:
 
-- **You're on Q8_0 instead of Q4_K_M**. Battlemage has a 4× kernel regression on Q8_0 ([llama.cpp #21517](https://github.com/ggml-org/llama.cpp/issues/21517)). Use Q4_K_M quants.
-- **You added `-ctk q8_0 -ctv q8_0`** to the cmd block. Don't — KV cache quantization regresses decode throughput on current SYCL kernels.
+- **You're on an old llama.cpp with the Q8_0 regression**. Q8_0 *used* to be ~4× slower than Q4_K_M on Xe2 ([#21517](https://github.com/ggml-org/llama.cpp/issues/21517)), but that's **fixed** ([#21527](https://github.com/ggml-org/llama.cpp/pull/21527)) — measured ~1.6× slower now (Ministral-14B on a B70: Q4_K_M 53 t/s vs Q8_0 32 t/s). If you see Q8_0 crawling, rebuild on current master. Q4_K_M is still the speed/size sweet spot, but Q8_0 is a viable quality option now.
+- **You added `-ctk q8_0 -ctv q8_0`** to the cmd block. Don't — KV cache quantization (a separate thing from Q8_0 weights) still regresses decode throughput on current SYCL kernels.
 - **You're on a non-trivially old commit of llama.cpp**. The SYCL backend moves fast. Rebuild with a recent tag/master.
 - **Vulkan is winning the backend race**. If `sycl-ls` shows the B70 but llama-server logs show it picking Vulkan instead, force with `--device SYCL0` in the cmd block (should already be in the example config).
 
