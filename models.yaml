@@ -1,0 +1,193 @@
+# battlemage-llama — model manifest
+#
+# Single source of truth for which models we run and where each came from.
+# Edit THIS file to add/remove models; it captures both the install source
+# (so we can re-download / reproduce) and the llama-swap runtime params.
+#
+# The live serving config (config/llama-swap.yaml) can be (re)generated from
+# the enabled entries here — see `scripts/apply-models.py` / `make models-apply`
+# once that's wired up. config/llama-swap.example.yaml stays as human docs.
+#
+# Per-model fields
+# ----------------
+#   name       (required) llama-swap alias + OpenAI model id
+#   enabled    default true; set false to keep a candidate documented but not
+#              installed or served
+#
+#   Source — exactly ONE of:
+#     path:    explicit container path of an already-present file or Ollama blob
+#     repo: + file:   download <file> from this HF repo into MODELS_DIR
+#       dir:   subdir under MODELS_DIR  (default: name)
+#       out:   save-as filename         (default: basename of file)
+#
+#   Runtime (optional; defaults match the Battlemage config we already run)
+#     ctx        default 131072   — cap dense 24B Mistral at 65536 (SYCL segfault)
+#     template   jinja file in templates/  -> --chat-template-file /templates/<x>
+#     reasoning  true -> --reasoning-format deepseek
+#     temp, top_p, extra
+#
+#   Tracking / docs only
+#     source     free-text note on where it came from
+#     notes      tier, caveats, things to verify
+
+models:
+
+  # ===========================================================================
+  # INSTALLED — currently served (mirrors config/llama-swap.yaml as of now)
+  # ===========================================================================
+
+  - name: qwen3-coder-30b
+    ctx: 131072
+    reasoning: true
+    path: /models/blobs/sha256-1194192cf2a187eb02722edcc3f77b11d21f537048ce04b67ccf8ba78863006a
+    source: "Ollama blob (ollama pull qwen3-coder:30b). HF equiv: unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF"
+    notes: "Tier 1, MoE A3B. Primary coder, ~83 t/s decode."
+
+  - name: qwen3-30b-a3b
+    ctx: 131072
+    reasoning: true
+    path: /models/blobs/sha256-58574f2e94b99fb9e4391408b57e5aeaaaec10f6384e9a699fc2cb43a5c8eabf
+    source: "Ollama blob (ollama pull qwen3:30b-a3b-thinking). HF equiv: unsloth/Qwen3-30B-A3B-Thinking-GGUF"
+    notes: "Tier 1, MoE A3B reasoning, full tools."
+
+  - name: glm-4.7-flash-q4
+    ctx: 131072
+    template: glm-4.7-flash.jinja
+    reasoning: true
+    temp: 0.6
+    top_p: 0.95
+    repo: unsloth/GLM-4.7-Flash-GGUF
+    dir: glm-4.7-flash
+    out: Q4_K_XL.gguf
+    file: GLM-4.7-Flash-Q4_K_XL.gguf
+    source: "https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF (verify exact HF filename)"
+    notes: "Tier 1, 106B/A12B MoE coder+agent, ~42 t/s."
+
+  - name: glm-4.7-flash-q5
+    ctx: 65536
+    template: glm-4.7-flash.jinja
+    reasoning: true
+    temp: 0.6
+    top_p: 0.95
+    repo: unsloth/GLM-4.7-Flash-GGUF
+    dir: glm-4.7-flash
+    out: Q5_K_M.gguf
+    file: GLM-4.7-Flash-Q5_K_M.gguf
+    source: "https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF (verify exact HF filename)"
+    notes: "Q5 best quality; capped 64k (128k KV saturates VRAM)."
+
+  - name: devstral-small-2-q4
+    ctx: 65536
+    template: devstral-small-2.jinja
+    temp: 0.15
+    repo: bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF
+    dir: devstral-small-2-24b
+    out: Q4_K_M.gguf
+    file: mistralai_Devstral-Small-2-24B-Instruct-2512-Q4_K_M.gguf
+    source: "https://huggingface.co/bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF (verify exact HF filename)"
+    notes: "Tier 1, dense 24B SWE-Bench leader. Capped 64k (dense-24B SYCL segfault at 128k)."
+
+  - name: devstral-small-2-q5
+    ctx: 65536
+    template: devstral-small-2.jinja
+    temp: 0.15
+    repo: bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF
+    dir: devstral-small-2-24b
+    out: Q5_K_M.gguf
+    file: mistralai_Devstral-Small-2-24B-Instruct-2512-Q5_K_M.gguf
+    source: "https://huggingface.co/bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF (verify exact HF filename)"
+    notes: "Q5 passes the strict required-call test; slowest (~16 t/s)."
+
+  - name: magistral-small-2509
+    ctx: 65536
+    path: /models/magistral-small-2509/Magistral-Small-2509-Q4_K_M.gguf
+    source: "bartowski / unsloth / mradermacher GGUF (Magistral-Small-2509)"
+    notes: "Tier 1.5, dense 24B reasoning. Embedded template handles tools. Capped 64k."
+
+  - name: ministral-3-14b-q4
+    ctx: 131072
+    template: ministral-3-reasoning.jinja
+    reasoning: true
+    temp: 0.7
+    top_p: 0.95
+    repo: unsloth/Ministral-3-14B-Reasoning-2512-GGUF
+    dir: ministral-3-14b-reasoning
+    out: Q4_K_M.gguf
+    file: Ministral-3-14B-Reasoning-2512-Q4_K_M.gguf
+    source: "https://huggingface.co/unsloth/Ministral-3-14B-Reasoning-2512-GGUF (verify exact HF filename)"
+    notes: "Tier 1.5, 14B reasoning/planner, ~48 t/s. Q4 beats Q5 on tool tests."
+
+  - name: ministral-3-14b-q5
+    ctx: 131072
+    template: ministral-3-reasoning.jinja
+    reasoning: true
+    temp: 0.7
+    top_p: 0.95
+    repo: unsloth/Ministral-3-14B-Reasoning-2512-GGUF
+    dir: ministral-3-14b-reasoning
+    out: Q5_K_M.gguf
+    file: Ministral-3-14B-Reasoning-2512-Q5_K_M.gguf
+    source: "https://huggingface.co/unsloth/Ministral-3-14B-Reasoning-2512-GGUF (verify exact HF filename)"
+    notes: "Q5; multi-turn tool round-trip can fail (Mistral 9-char tool-call-ID rule)."
+
+  # ===========================================================================
+  # CANDIDATES — researched, not yet installed. Flip enabled: true to adopt.
+  # Verify each new model with ./tests/tool_use/run.sh <name> + make test-models.
+  # ===========================================================================
+
+  - name: gpt-oss-20b
+    enabled: true
+    ctx: 131072
+    repo: ggml-org/gpt-oss-20b-GGUF
+    file: gpt-oss-20b-mxfp4.gguf
+    dir: gpt-oss-20b
+    source: "https://huggingface.co/ggml-org/gpt-oss-20b-GGUF"
+    notes: >-
+      ~13 GB, 21B/A3.6B MoE, OpenAI open-weights. Strong tools + reasoning,
+      great diversity pick. VERIFY: (1) MXFP4 decode speed on Intel SYCL is
+      unknown — run llama-bench before trusting it; (2) uses OpenAI Harmony
+      format, not plain ChatML — confirm tool calls parse via the tool_use suite
+      (rely on --jinja + embedded template; reasoning channels -> reasoning_content).
+
+  - name: qwen3.5-35b-a3b-q4
+    enabled: true
+    ctx: 131072
+    temp: 0.6
+    top_p: 0.95
+    reasoning: true
+    repo: unsloth/Qwen3.5-35B-A3B-GGUF
+    file: Qwen3.5-35B-A3B-Q4_K_M.gguf
+    dir: qwen3.5-35b-a3b
+    out: Q4_K_M.gguf
+    source: "https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF"
+    notes: >-
+      ~21 GB, MoE A3B successor to qwen3-30b-a3b. RE-TEST tool calling: our old
+      example config said "skip until upstream fixes", but Unsloth now report a
+      universal chat-template fix for Qwen3.5 tool calls. Multimodal repo (has
+      mmproj) but works text-only. Disable thinking via
+      --chat-template-kwargs '{"enable_thinking":false}' if desired.
+
+  - name: qwen3.5-27b-q4
+    enabled: true
+    ctx: 65536
+    repo: unsloth/Qwen3.5-27B-GGUF
+    file: Qwen3.5-27B-Q4_K_M.gguf
+    dir: qwen3.5-27b
+    out: Q4_K_M.gguf
+    source: "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF"
+    notes: >-
+      ~17 GB, dense 27B. Start at 64k context and test 128k (dense models stress
+      KV/SYCL). Same tool-calling re-test caveat as the 35B-A3B.
+
+  - name: qwen2.5-coder-32b-q4
+    enabled: true
+    ctx: 32768
+    repo: bartowski/Qwen2.5-Coder-32B-Instruct-GGUF
+    file: Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf
+    dir: qwen2.5-coder-32b
+    out: Q4_K_M.gguf
+    source: "https://huggingface.co/bartowski/Qwen2.5-Coder-32B-Instruct-GGUF"
+    notes: >-
+      ~20 GB, dense 32B, top-tier pure code-gen (~GPT-4o on code). Best as a
+      code/refactor/chat model — likely shares the wrong-tag tool-emission bug of
+      the rejected Qwen2.5-Coder-7B, so do NOT assume agentic tool use; verify.

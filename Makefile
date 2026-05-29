@@ -42,9 +42,10 @@ MODEL_ARGS := \
 
 SYNC := $(SCRIPTS)/sync-litellm.py
 TEST := $(SCRIPTS)/test-models.py
+APPLY := $(SCRIPTS)/apply-models.py
 
 .DEFAULT_GOAL := help
-.PHONY: help add-model download-model add-config list-models find-blobs sync-litellm test-models
+.PHONY: help add-model download-model add-config list-models find-blobs sync-litellm test-models models-apply
 
 help: ## Show this help
 	@echo "battlemage-llama — make targets:"
@@ -75,6 +76,13 @@ list-models: ## List the model aliases currently in the config
 
 find-blobs: ## Map local Ollama models to container blob paths
 	@$(SCRIPTS)/find-gguf-blobs.sh $(MODELS_DIR)
+
+models-apply: ## Download enabled models from models.yaml and regenerate config/llama-swap.yaml
+	@$(APPLY) \
+		$(if $(MANIFEST),--manifest $(MANIFEST)) \
+		$(if $(CONFIG),--config $(CONFIG)) \
+		$(if $(DRY_RUN),--dry-run) \
+		$(if $(NO_DOWNLOAD),--no-download)
 
 sync-litellm: ## Mirror llama-swap's models into a LiteLLM proxy (adds new, deletes stale)
 	@$(SYNC) \

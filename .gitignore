@@ -1,6 +1,7 @@
-# User's local config — bind-mounted, not tracked in git.
-# Start from config/llama-swap.example.yaml.
+# Generated serving config — produced from models.yaml by `make models-apply`.
+# models.yaml is the tracked source of truth; this artifact is not committed.
 config/llama-swap.yaml
+config/llama-swap.yaml.bak
 
 # Local environment overrides for GIDs / paths
 .env

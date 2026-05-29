@@ -114,11 +114,34 @@ You do NOT need Ollama installed. The default `docker-compose.yml` bind-mounts `
 
 If you downloaded GGUFs from Hugging Face directly, point `MODELS_DIR` at wherever they live (set in `.env`) and adjust the `--model` paths in your `config/llama-swap.yaml` accordingly. Inside the container, whatever you bind-mount shows up at `/models/`.
 
-## Adding models with `make`
+## Managing models declaratively (`models.yaml`)
 
-The `Makefile` wraps `scripts/add-model.sh` to download a GGUF from Hugging Face
-into `MODELS_DIR` and append a ready-to-run block (with the Battlemage defaults —
-`-ngl 99 --device SYCL0 -sm none --jinja`) to `config/llama-swap.yaml`:
+`models.yaml` (repo root) is the **source of truth** for what we run and where
+each GGUF came from. Each entry records the install source (an Ollama blob
+`path:`, or a HF `repo:` + `file:`) and the llama-swap runtime params (`ctx`,
+`template`, `reasoning`, `temp`, `top_p`). `enabled: false` keeps a model
+documented as a candidate without installing or serving it.
+
+```bash
+# Edit models.yaml, then:
+make models-apply              # download any missing enabled GGUF + regenerate the config
+make models-apply DRY_RUN=1    # preview the plan + generated config, write nothing
+```
+
+`make models-apply` downloads what's missing and **regenerates**
+`config/llama-swap.yaml` from the enabled entries (a `.bak` is kept). That file
+is now a generated artifact — edit `models.yaml`, not the config. It also reports
+GGUF dirs in `MODELS_DIR` that no enabled model references, so stale downloads are
+easy to spot. Follow with `make sync-litellm` and `make test-models`. Requires
+PyYAML (`pip install pyyaml`).
+
+## Adding models ad-hoc with `make`
+
+For a quick one-off (without editing `models.yaml`), `make add-model` wraps
+`scripts/add-model.sh` to download a GGUF from Hugging Face into `MODELS_DIR` and
+*append* a ready-to-run block (Battlemage defaults — `-ngl 99 --device SYCL0
+-sm none --jinja`) to `config/llama-swap.yaml`. Note the next `make models-apply`
+will overwrite such appends, so fold anything you want to keep into `models.yaml`:
 
 ```bash
 # Download + register in one step
