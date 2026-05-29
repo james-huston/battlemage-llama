@@ -41,6 +41,7 @@ Flags: --dry-run (plan only), --no-delete (never remove), --timeout SECS.
 
 import argparse
 import json
+import math
 import os
 import sys
 import urllib.error
@@ -105,6 +106,60 @@ def api(method, url, key, body=None, timeout=15):
         die(f"timed out reaching {url}")
 
 
+def load_model_infos():
+    """Map model name -> LiteLLM model_info dict, built from models.yaml.
+
+    Each entry's `litellm:` block (description, supports_function_calling,
+    supports_tool_choice, supports_reasoning, ...) is passed through. We also
+    derive: mode=chat and supports_vision=false (fleet defaults; overridable in
+    the block), max_input_tokens from the entry's `ctx`, and per-token costs from
+    the entry's `decode_tps` + the top-level `cost:` knobs (electricity ×
+    amortization). Output price ≈ watts/1000 × (1/decode_tps/3600) × $/kWh ×
+    amortization; input = output / input_factor (prefill is faster than decode).
+
+    Optional: if models.yaml or PyYAML is absent, this is simply skipped.
+    """
+    path = os.path.join(REPO_ROOT, "models.yaml")
+    if not os.path.isfile(path):
+        return {}
+    try:
+        import yaml
+    except ImportError:
+        print("note: PyYAML not installed — skipping model_info metadata.", file=sys.stderr)
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        manifest = yaml.safe_load(fh) or {}
+
+    cost = manifest.get("cost") or {}
+    watts = cost.get("watts")
+    rate = cost.get("usd_per_kwh")
+    amort = cost.get("amortization", 1)
+    input_factor = cost.get("input_factor", 1)
+
+    out = {}
+    for m in manifest.get("models") or []:
+        name = m.get("name")
+        if not name:
+            continue
+        info = {}
+        block = m.get("litellm")
+        if isinstance(block, dict):
+            info.update({k: (" ".join(v.split()) if isinstance(v, str) else v)
+                         for k, v in block.items()})
+        info.setdefault("mode", "chat")
+        info.setdefault("supports_vision", False)
+        if m.get("ctx"):
+            info.setdefault("max_input_tokens", int(m["ctx"]))
+        tps = m.get("decode_tps")
+        if tps and watts and rate:
+            out_cost = (watts / 1000.0) * (1.0 / float(tps) / 3600.0) * float(rate) * float(amort)
+            info["output_cost_per_token"] = round(out_cost, 12)
+            info["input_cost_per_token"] = round(out_cost / float(input_factor), 12)
+        if info:
+            out[name] = info
+    return out
+
+
 def fetch_source_models(upstream, timeout):
     url = f"{upstream.rstrip('/')}/v1/models"
     status, payload = api("GET", url, key=None, timeout=timeout)
@@ -135,13 +190,16 @@ def fetch_litellm_models(litellm, key, timeout):
             "db_model": bool(info.get("db_model")),
             "model": params.get("model"),
             "api_base": params.get("api_base"),
+            "info": info,
         }
     return models
 
 
-def add_model(litellm, key, name, params, timeout):
+def add_model(litellm, key, name, params, timeout, model_info=None):
     url = f"{litellm.rstrip('/')}/model/new"
     body = {"model_name": name, "litellm_params": params}
+    if model_info:
+        body["model_info"] = model_info
     status, payload = api("POST", url, key=key, body=body, timeout=timeout)
     if status not in (200, 201):
         die(f"failed to add '{name}' ({status}): {payload}")
@@ -199,6 +257,7 @@ def main():
 
     source_ids = fetch_source_models(upstream, args.timeout)
     existing = fetch_litellm_models(litellm, admin_key, args.timeout)
+    model_infos = load_model_infos()
 
     if args.reset:
         purge = [(name, info["id"]) for name, info in existing.items() if info["db_model"]]
@@ -218,17 +277,34 @@ def main():
     def desired_params(model_id):
         return {"model": f"{provider}/{model_id}", "api_base": api_base, "api_key": model_api_key}
 
+    def desired_info(model_id):
+        return model_infos.get(model_id) or None
+
+    def info_drifted(model_id, cur):
+        """True if any manifest model_info field differs from what LiteLLM has."""
+        want = model_infos.get(model_id) or {}
+        have = cur.get("info") or {}
+        for k, v in want.items():
+            hv = have.get(k)
+            if isinstance(v, float) and isinstance(hv, (int, float)):
+                if not math.isclose(float(hv), v, rel_tol=1e-6, abs_tol=1e-15):
+                    return True
+            elif hv != v:
+                return True
+        return False
+
     to_add, to_update, to_delete, skipped = [], [], [], []
 
     for model_id in source_ids:
         cur = existing.get(model_id)
         if cur is None:
             to_add.append(model_id)
-        elif cur["model"] != f"{provider}/{model_id}" or cur["api_base"] != api_base:
+        elif (cur["model"] != f"{provider}/{model_id}" or cur["api_base"] != api_base
+              or info_drifted(model_id, cur)):
             if cur["db_model"]:
                 to_update.append(model_id)
             else:
-                skipped.append((model_id, "config-defined, can't rewrite api_base"))
+                skipped.append((model_id, "config-defined, can't rewrite"))
 
     for name, info in existing.items():
         if name in source_ids:
@@ -255,12 +331,14 @@ def main():
 
     for model_id in to_add:
         print(f"+ add    {model_id}")
-        add_model(litellm, admin_key, model_id, desired_params(model_id), args.timeout)
+        add_model(litellm, admin_key, model_id, desired_params(model_id), args.timeout,
+                  model_info=desired_info(model_id))
 
     for model_id in to_update:
         print(f"~ repoint {model_id}")
         delete_model(litellm, admin_key, existing[model_id]["id"], args.timeout)
-        add_model(litellm, admin_key, model_id, desired_params(model_id), args.timeout)
+        add_model(litellm, admin_key, model_id, desired_params(model_id), args.timeout,
+                  model_info=desired_info(model_id))
 
     for name, model_id in to_delete:
         print(f"- delete {name}")

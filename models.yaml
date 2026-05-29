@@ -29,6 +29,23 @@
 #   Tracking / docs only
 #     source     free-text note on where it came from
 #     notes      tier, caveats, things to verify
+#
+#   LiteLLM metadata (pushed into model_info by `make sync-litellm`)
+#     decode_tps   measured/estimated decode tok/s — drives the cost derivation
+#     litellm:     model_info fields (description, supports_function_calling,
+#                  supports_tool_choice, supports_reasoning, ...). mode=chat and
+#                  supports_vision=false are defaulted; max_input_tokens from ctx.
+
+# Cost model (electricity + hardware amortization). input/output_cost_per_token are
+# DERIVED per model from decode_tps + these knobs, so changing a knob re-prices the
+# whole fleet on the next `make sync-litellm`:
+#   output $/token = watts/1000 * (1/decode_tps/3600) * usd_per_kwh * amortization
+#   input  $/token = output / input_factor   (prefill is faster than decode)
+cost:
+  watts: 250          # GPU draw under inference load (Arc Pro B70 TBP ~250W)
+  usd_per_kwh: 0.18   # electricity rate — adjust to your local price
+  amortization: 3     # multiplier over raw electricity for GPU capital + wear
+  input_factor: 4     # prefill ~4x faster than decode -> input costs 1/4 of output
 
 models:
 
@@ -37,6 +54,12 @@ models:
   # ===========================================================================
 
   - name: qwen3-coder-30b
+    decode_tps: 83
+    litellm:
+      description: "MoE A3B coder (~83 t/s). Primary coder; full tool calling."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: true
     ctx: 131072
     reasoning: true
     path: /models/blobs/sha256-1194192cf2a187eb02722edcc3f77b11d21f537048ce04b67ccf8ba78863006a
@@ -44,6 +67,12 @@ models:
     notes: "Tier 1, MoE A3B. Primary coder, ~83 t/s decode."
 
   - name: qwen3-30b-a3b
+    decode_tps: 83
+    litellm:
+      description: "MoE A3B general reasoning; full tool calling."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: true
     ctx: 131072
     reasoning: true
     path: /models/blobs/sha256-58574f2e94b99fb9e4391408b57e5aeaaaec10f6384e9a699fc2cb43a5c8eabf
@@ -51,6 +80,12 @@ models:
     notes: "Tier 1, MoE A3B reasoning, full tools."
 
   - name: glm-4.7-flash-q4
+    decode_tps: 42
+    litellm:
+      description: "GLM-4.7-Flash 106B/A12B MoE coder+agent, Q4, 128k; full tool calling."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: true
     ctx: 131072
     template: glm-4.7-flash.jinja
     reasoning: true
@@ -64,6 +99,12 @@ models:
     notes: "Tier 1, 106B/A12B MoE coder+agent, ~42 t/s."
 
   - name: glm-4.7-flash-q5
+    decode_tps: 36
+    litellm:
+      description: "GLM-4.7-Flash 106B/A12B MoE, Q5 (best quality), 64k; full tool calling."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: true
     ctx: 65536
     template: glm-4.7-flash.jinja
     reasoning: true
@@ -77,6 +118,12 @@ models:
     notes: "Q5 best quality; capped 64k (128k KV saturates VRAM)."
 
   - name: devstral-small-2-q4
+    decode_tps: 28
+    litellm:
+      description: "Devstral-Small-2 24B SWE-Bench leader, Q4, 64k; tools but ignores tool_choice:required."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: false
     ctx: 65536
     template: devstral-small-2.jinja
     temp: 0.15
@@ -88,6 +135,12 @@ models:
     notes: "Tier 1, dense 24B SWE-Bench leader. Capped 64k (dense-24B SYCL segfault at 128k)."
 
   - name: devstral-small-2-q5
+    decode_tps: 16
+    litellm:
+      description: "Devstral-Small-2 24B, Q5, 64k; full tools (slowest, ~16 t/s)."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: false
     ctx: 65536
     template: devstral-small-2.jinja
     temp: 0.15
@@ -99,12 +152,24 @@ models:
     notes: "Q5 passes the strict required-call test; slowest (~16 t/s)."
 
   - name: magistral-small-2509
+    decode_tps: 29
+    litellm:
+      description: "Magistral-Small 24B reasoning (Mistral); tools but ignores tool_choice:required."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: false
     ctx: 65536
     path: /models/magistral-small-2509/Magistral-Small-2509-Q4_K_M.gguf
     source: "bartowski / unsloth / mradermacher GGUF (Magistral-Small-2509)"
     notes: "Tier 1.5, dense 24B reasoning. Embedded template handles tools. Capped 64k."
 
   - name: ministral-3-14b-q4
+    decode_tps: 48
+    litellm:
+      description: "Ministral-3 14B reasoning/planner, Q4, 128k; tools but ignores tool_choice:required."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: true
     ctx: 131072
     template: ministral-3-reasoning.jinja
     reasoning: true
@@ -118,6 +183,12 @@ models:
     notes: "Tier 1.5, 14B reasoning/planner, ~48 t/s. Q4 beats Q5 on tool tests."
 
   - name: ministral-3-14b-q5
+    decode_tps: 27
+    litellm:
+      description: "Ministral-3 14B reasoning, Q5, 128k; tools but ignores tool_choice:required."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: true
     ctx: 131072
     template: ministral-3-reasoning.jinja
     reasoning: true
@@ -137,6 +208,12 @@ models:
 
   - name: gpt-oss-20b
     enabled: true
+    decode_tps: 60
+    litellm:
+      description: "OpenAI gpt-oss 21B/A3.6B MoE; full tool calling + reasoning."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: true
     ctx: 131072
     repo: ggml-org/gpt-oss-20b-GGUF
     file: gpt-oss-20b-mxfp4.gguf
@@ -151,6 +228,12 @@ models:
 
   - name: qwen3.5-35b-a3b-q4
     enabled: true
+    decode_tps: 55
+    litellm:
+      description: "Qwen3.5 MoE A3B; tool calling OK but tool_choice:required errors (don't use it)."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: false
     ctx: 131072
     temp: 0.6
     top_p: 0.95
@@ -174,6 +257,12 @@ models:
 
   - name: qwen3.5-27b-q4
     enabled: true
+    decode_tps: 24
+    litellm:
+      description: "Qwen3.5 dense 27B; full tool calling."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: false
     ctx: 65536
     repo: unsloth/Qwen3.5-27B-GGUF
     file: Qwen3.5-27B-Q4_K_M.gguf
@@ -188,6 +277,12 @@ models:
 
   - name: qwen2.5-coder-32b-q4
     enabled: true
+    decode_tps: 18
+    litellm:
+      description: "Qwen2.5-Coder 32B; top code-gen but CHAT/CODE-GEN ONLY (no tool calling)."
+      supports_function_calling: false
+      supports_tool_choice: false
+      supports_reasoning: false
     ctx: 32768
     repo: bartowski/Qwen2.5-Coder-32B-Instruct-GGUF
     file: Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf

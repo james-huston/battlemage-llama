@@ -119,8 +119,14 @@ If you downloaded GGUFs from Hugging Face directly, point `MODELS_DIR` at wherev
 `models.yaml` (repo root) is the **source of truth** for what we run and where
 each GGUF came from. Each entry records the install source (an Ollama blob
 `path:`, or a HF `repo:` + `file:`) and the llama-swap runtime params (`ctx`,
-`template`, `reasoning`, `temp`, `top_p`). `enabled: false` keeps a model
-documented as a candidate without installing or serving it.
+`template`, `reasoning` / `reasoning_format`, `temp`, `top_p`). `enabled: false`
+keeps a model documented as a candidate without installing or serving it.
+
+Entries can also carry **LiteLLM metadata**: `decode_tps` (measured decode
+tok/s) and a `litellm:` block (`description`, `supports_function_calling`,
+`supports_tool_choice`, `supports_reasoning`, …), plus a top-level `cost:` block.
+`make sync-litellm` turns these into LiteLLM `model_info` — including per-token
+costs derived from `decode_tps` (see [Syncing to LiteLLM](#syncing-models-to-a-litellm-proxy)).
 
 ```bash
 # Edit models.yaml, then:
@@ -174,16 +180,39 @@ next request to the new alias spawns it — then validate with
 ## Syncing models to a LiteLLM proxy
 
 If you front this stack with [LiteLLM](https://github.com/BerriAI/litellm),
-`scripts/sync-litellm.py` (`make sync-litellm`) makes LiteLLM's model list
-mirror what llama-swap serves: it reads `GET {upstream}/v1/models`, then adds
-any missing model to LiteLLM, deletes any LiteLLM-managed model that's no
-longer served, and re-points a model whose `api_base` drifted. Models baked
-into LiteLLM's static `config.yaml` (not DB-managed) are left untouched.
+`scripts/sync-litellm.py` (`make sync-litellm`) makes LiteLLM mirror what
+llama-swap serves. It reads `GET {upstream}/v1/models`, then **adds** missing
+models, **deletes** LiteLLM-managed models no longer served, and **re-points**
+any whose registration drifted. Models baked into LiteLLM's static `config.yaml`
+(not DB-managed) are left untouched.
+
+Each model is registered with the **`openai/` provider** + an `/v1` `api_base`,
+and enriched with `model_info` drawn from `models.yaml` (shown in LiteLLM's Model
+Hub UI and used for routing/validation):
+
+- **`description`** and the **`supports_function_calling` / `supports_tool_choice` /
+  `supports_reasoning` / `supports_vision`** capability flags — from each entry's
+  `litellm:` block. (So e.g. a code-only model can be flagged "no tool calling.")
+- **`max_input_tokens`** — from the entry's `ctx`.
+- **`mode: chat`** (fleet default).
+- **`input_cost_per_token` / `output_cost_per_token`** — *derived* per model from
+  its `decode_tps` and the manifest's top-level `cost:` block, which prices GPU
+  time as electricity × a hardware-amortization multiplier:
+  ```yaml
+  cost:
+    watts: 250          # GPU draw under load
+    usd_per_kwh: 0.18   # your electricity rate
+    amortization: 3     # capital + wear multiplier over raw electricity
+    input_factor: 4     # prefill is ~4x faster than decode -> input = output/4
+  ```
+  `output $/token = watts/1000 × (1/decode_tps/3600) × usd_per_kwh × amortization`.
+  Change a knob and the next sync re-prices the whole fleet (slower models cost
+  more per token).
 
 ```bash
 # Put the admin key in gitignored .env (LITELLM_API_KEY=sk-...), then:
 make sync-litellm DRY_RUN=1          # preview the plan, change nothing
-make sync-litellm                    # apply: add new, delete stale
+make sync-litellm                    # add new, re-point drifted, delete stale
 ```
 
 | Var / env | Meaning |
@@ -193,15 +222,23 @@ make sync-litellm                    # apply: add new, delete stale
 | `UPSTREAM` / `UPSTREAM_URL` | llama-swap base URL the script reads `/v1/models` from (default `http://localhost:11434`) |
 | `API_BASE` / `MODEL_API_BASE` | `api_base` baked into each LiteLLM model. **If LiteLLM runs on another host, this must be routable from there** — use the model server's IP/hostname, not `localhost` (e.g. `http://10.0.0.5:11434/v1`). |
 | `NO_DELETE=1` | only add/re-point, never delete |
+| `RESET=1` | delete ALL DB-managed models first, then re-add (clean rebuild) |
 
-Run it after `make add-model` to keep LiteLLM in lockstep. It needs no extra
-dependencies (Python 3 stdlib only).
+Run it after `make models-apply` to keep LiteLLM in lockstep. The `model_info`
+enrichment (descriptions, flags, costs) needs PyYAML (`pip install pyyaml`);
+without it the model list still syncs.
 
 > **Provider gotcha:** llama-swap is OpenAI-compatible, *not* Ollama. Models in
 > LiteLLM must use the `openai/` provider with an `/v1` `api_base` — an
 > `ollama`/`ollama_chat` provider pointed at port 11434 fails with
 > `Ollama_chatException`. `sync-litellm` registers the right provider; see
 > [`docs/troubleshooting.md`](docs/troubleshooting.md).
+
+> **Admin vs inference keys:** LiteLLM's `model/*` management API and chat
+> inference use different key scopes. A management-only virtual key can sync
+> models but gets a 403 on `/v1/chat/completions` — so `make test-models VIA=litellm`
+> needs a key allowed to run inference (or the master key), not just the admin key
+> used for syncing.
 
 ## Smoke-testing models
 
