@@ -253,7 +253,25 @@ models:
       samplers" (forced-call grammar conflict) — don't rely on forced tool calls.
       enable_thinking via --chat-template-kwargs crashes llama-server here (JSON
       quoting breaks through llama-swap arg-splitting). Multimodal repo (mmproj)
-      but works text-only.
+      but works text-only. NOTE: a reasoning-separated sibling
+      (qwen3.5-35b-a3b-q4-thinking, reasoning_format: deepseek) now passes the
+      roundtrip cleanly on the rebuilt llama.cpp — prefer it for agentic use.
+
+  - name: qwen3.5-35b-a3b-q4-thinking
+    enabled: true
+    decode_tps: 55
+    litellm:
+      description: "Qwen3.5 MoE A3B with reasoning exposed (deepseek). Same weights as qwen3.5-35b-a3b-q4."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: true
+    ctx: 131072
+    temp: 0.6
+    top_p: 0.95
+    reasoning_format: deepseek
+    path: /models/qwen3.5-35b-a3b/Q4_K_M.gguf
+    source: "Same GGUF as qwen3.5-35b-a3b-q4 (unsloth/Qwen3.5-35B-A3B-GGUF); deepseek-reasoning variant."
+    notes: "Reasoning-separated sibling of qwen3.5-35b-a3b-q4 (same GGUF). deepseek routing now works on the rebuilt llama.cpp (master da3f990): tool calling verified 6/7 on 2026-05-29 with roundtrip PASS and a clean content/reasoning_content split. tool_choice:required is ignored (soft fail, not the 400 crash the none variant hits) — hence supports_tool_choice: false."
 
   - name: qwen3.5-27b-q4
     enabled: true
