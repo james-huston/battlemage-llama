@@ -74,12 +74,18 @@ def model_path(entry):
         cpath = entry["path"]
         rel = cpath[len("/models/"):] if cpath.startswith("/models/") else None
         return cpath, rel
-    repo, file = entry.get("repo"), entry.get("file")
-    if not (repo and file):
-        die(f"model '{entry.get('name')}' needs either 'path' or 'repo'+'file'.")
+    repo = entry.get("repo")
+    file = entry.get("file")
+    out = entry.get("out")
+    if not repo:
+        die(f"model '{entry.get('name')}' needs either 'path' or 'repo' (+ 'file' for Hugging Face).")
+    is_civitai = repo.startswith("civitai:")
+    if not file and not (is_civitai and out):
+        die(f"model '{entry.get('name')}' needs 'file' "
+            f"(or, for civitai, 'out:' so the local filename is known).")
     dir_ = entry.get("dir") or entry["name"]
-    out = entry.get("out") or os.path.basename(file)
-    rel = f"{dir_}/{out}"
+    local_name = out or os.path.basename(file)
+    rel = f"{dir_}/{local_name}"
     return f"/models/{rel}", rel
 
 
@@ -174,8 +180,10 @@ def download_if_missing(entry, models_dir, rel, dry_run):
         return "get"
 
     cmd = ["bash", ADD_MODEL, "--no-config",
-           "--repo", entry["repo"], "--file", entry["file"],
+           "--repo", entry["repo"],
            "--name", entry["name"], "--dir", entry.get("dir") or entry["name"]]
+    if entry.get("file"):
+        cmd += ["--file", entry["file"]]
     if entry.get("out"):
         cmd += ["--out", entry["out"]]
     if entry.get("branch"):
