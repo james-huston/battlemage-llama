@@ -35,8 +35,8 @@ RUN apt-get update && \
 # 25.18, which does NOT recognize Battlemage B70 (device 0xe223). Observed
 # failure mode: `sycl-ls` reports `Platforms: 0` inside the container.
 #
-# Installing directly from GitHub gives us 26.09.37435.1, which is known-good
-# on the B70 (confirmed in llama.cpp issue #21517 and on the maintainer's rig).
+# Installing directly from GitHub gives us 26.18.38308.1 (2026-05), known-good
+# on the B70. (Earlier 26.09.37435.1 also worked; bumped for newer-silicon fixes.)
 #
 # To bump versions:
 #   * https://github.com/intel/compute-runtime/releases → COMPUTE_RUNTIME_VERSION
@@ -50,10 +50,10 @@ RUN apt-get update && \
 #     --build-arg IGC_VERSION=2.31.0 \
 #     --build-arg IGC_BUILD=21000
 # -----------------------------------------------------------------------------
-ARG COMPUTE_RUNTIME_VERSION=26.09.37435.1
-ARG IGC_VERSION=2.30.1
-ARG IGC_BUILD=20950
-ARG GMMLIB_VERSION=22.9.0
+ARG COMPUTE_RUNTIME_VERSION=26.18.38308.1
+ARG IGC_VERSION=2.34.4
+ARG IGC_BUILD=21428
+ARG GMMLIB_VERSION=22.10.0
 
 RUN mkdir -p /tmp/neo && cd /tmp/neo && \
     # IGC (Intel Graphics Compiler)
@@ -106,7 +106,7 @@ RUN git clone --depth 1 --branch ${LLAMA_CPP_REF} \
 # Override version at build time if needed:
 #   docker compose build --build-arg LLAMA_SWAP_VERSION=200
 # -----------------------------------------------------------------------------
-ARG LLAMA_SWAP_VERSION=208
+ARG LLAMA_SWAP_VERSION=217
 RUN wget -qO /tmp/llama-swap.tar.gz \
         "https://github.com/mostlygeek/llama-swap/releases/download/v${LLAMA_SWAP_VERSION}/llama-swap_${LLAMA_SWAP_VERSION}_linux_amd64.tar.gz" && \
     mkdir -p /opt/llama-swap/bin && \

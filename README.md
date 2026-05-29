@@ -263,6 +263,7 @@ non-zero if any model fails. Knobs: `VIA`, `BASE`, `API_KEY`, `MAX_TOKENS`,
 ## Documentation
 
 - [`docs/host-setup.md`](docs/host-setup.md) — host driver / kernel setup for Battlemage on Ubuntu 25.10
+- [`docs/upgrading.md`](docs/upgrading.md) — bump llama.cpp / llama-swap / the Intel driver and revalidate on Battlemage
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — common issues and diagnostics
 - Upstream: [llama.cpp SYCL docs](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md), [llama-swap configuration](https://github.com/mostlygeek/llama-swap/blob/main/config.example.yaml)
 
