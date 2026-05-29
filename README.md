@@ -260,6 +260,35 @@ reported as `WARN`, not `FAIL`; bump `MAX_TOKENS` for those. Exit code is
 non-zero if any model fails. Knobs: `VIA`, `BASE`, `API_KEY`, `MAX_TOKENS`,
 `TIMEOUT`, `PROMPT` (also Python 3 stdlib only).
 
+## Image generation
+
+llama-swap also serves **text-to-image** on demand: this stack builds
+[stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp)'s
+`sd-server` with the SYCL backend, and `models.yaml` declares an image model with
+`engine: sd-server`. llama-swap swaps it in like any LLM and proxies the OpenAI
+`POST /v1/images/generations` endpoint (which the web UI's image section also drives).
+
+The default `sdxl` entry serves Stable Diffusion XL base 1.0:
+
+```bash
+curl -s http://localhost:11434/v1/images/generations \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"sdxl","prompt":"a red cube on a wooden table, studio lighting","size":"1024x1024"}' \
+    | jq -r '.data[0].b64_json' | base64 -d > out.png
+```
+
+Measured on the Arc Pro B70 (SDXL, 20-step Euler A): ~5 s @ 512², ~13 s @ 768²,
+~30 s @ 1024²; ~6.8 GiB VRAM. Add another image model by copying the `sdxl` entry
+in `models.yaml` (`engine: sd-server`, point `repo`/`file` at a checkpoint) and
+running `make models-apply`.
+
+**Battlemage notes** (handled automatically): the sd.cpp build adds
+`-fno-sycl-id-queries-fit-in-int` (without it, 1024² VAE decode overflows int32 in
+the SYCL `IM2COL` op); flash attention (`--diffusion-fa`) is **off** (it crashes
+sd-server on Xe2); and the generated config sets `checkEndpoint: /v1/models` (sd-server
+has no `/health`). Full write-up:
+[`docs/improvements/001-sycl-image-generation.md`](docs/improvements/001-sycl-image-generation.md).
+
 ## Documentation
 
 - [`docs/host-setup.md`](docs/host-setup.md) — host driver / kernel setup for Battlemage on Ubuntu 25.10

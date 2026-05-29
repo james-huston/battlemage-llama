@@ -20,6 +20,6 @@ first** (write the story), **track progress** inside each story via the
 
 | # | Story | Status | Summary |
 |---|-------|--------|---------|
-| [001](001-sycl-image-generation.md) | SYCL image generation (stable-diffusion.cpp) | Draft | On-demand text-to-image through the llama-swap UI/`/v1/images/generations`, served on the B70 via SYCL |
+| [001](001-sycl-image-generation.md) | SYCL image generation (stable-diffusion.cpp) | Review | On-demand text-to-image through the llama-swap UI/`/v1/images/generations`, served on the B70 via SYCL. Implemented + validated (SDXL 512²/768²/1024²); awaiting PR review. |
 
-_Overall: 0 done / 1 total._
+_Overall: 0 done / 1 in review / 1 total._

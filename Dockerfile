@@ -101,6 +101,31 @@ RUN git clone --depth 1 --branch ${LLAMA_CPP_REF} \
     rm -rf /tmp/llama.cpp
 
 # -----------------------------------------------------------------------------
+# Build stable-diffusion.cpp server (sd-server) with SYCL — on-demand image
+# generation, swapped in by llama-swap like any model. Same icx/icpx toolchain;
+# -DSD_SYCL=ON flips on GGML_SYCL. sd-server serves OpenAI /v1/images/generations
+# (+ SDAPI), which llama-swap proxies. Pin SD_CPP_REF for reproducible builds.
+# -----------------------------------------------------------------------------
+ARG SD_CPP_REF=master
+RUN git clone --recurse-submodules --shallow-submodules --depth 1 --branch ${SD_CPP_REF} \
+        https://github.com/leejet/stable-diffusion.cpp.git /tmp/sd.cpp && \
+    cd /tmp/sd.cpp && \
+    cmake -B build -G Ninja \
+        -DSD_SYCL=ON \
+        -DGGML_SYCL_F16=ON \
+        -DCMAKE_C_COMPILER=icx \
+        -DCMAKE_CXX_COMPILER=icpx \
+        -DCMAKE_CXX_FLAGS="-fno-sycl-id-queries-fit-in-int" \
+        -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build --config Release --target sd-server -j $(nproc) && \
+    mkdir -p /opt/sd-cpp/bin /opt/sd-cpp/lib && \
+    cp build/bin/sd-server /opt/sd-cpp/bin/ && \
+    find build -name '*.so*' -exec cp -a {} /opt/sd-cpp/lib/ \; && \
+    echo "/opt/sd-cpp/lib" > /etc/ld.so.conf.d/sd-cpp.conf && \
+    ldconfig && \
+    rm -rf /tmp/sd.cpp
+
+# -----------------------------------------------------------------------------
 # Install llama-swap
 #
 # Override version at build time if needed:
@@ -117,7 +142,7 @@ RUN wget -qO /tmp/llama-swap.tar.gz \
 # -----------------------------------------------------------------------------
 # Runtime configuration
 # -----------------------------------------------------------------------------
-ENV PATH=/opt/llama-swap/bin:/opt/llama-cpp/bin:${PATH}
+ENV PATH=/opt/llama-swap/bin:/opt/llama-cpp/bin:/opt/sd-cpp/bin:${PATH}
 
 # Hide CPU OpenCL from llama.cpp so it doesn't enumerate the Ryzen as a GPU.
 # level_zero:* = "any/all Level-Zero GPUs" — the B70 shows up here.

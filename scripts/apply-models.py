@@ -85,33 +85,55 @@ def model_path(entry):
 
 def generate_block(entry, cpath):
     name = entry["name"]
-    lines = [
-        f"  # {name} — from models.yaml",
-        f"  {name}:",
-        "    cmd: |",
-        "      /opt/llama-cpp/bin/llama-server",
-        "      --port ${PORT}",
-        f"      --model {cpath}",
-        f"      --alias {name}",
-        "      --host 127.0.0.1",
-        "      -ngl 99",
-        f"      -c {entry.get('ctx', DEFAULT_CTX)}",
-        "      --device SYCL0",
-        "      -sm none",
-        "      --jinja",
-    ]
-    if entry.get("template"):
-        lines.append(f"      --chat-template-file /templates/{entry['template']}")
-    if entry.get("reasoning_format"):
-        lines.append(f"      --reasoning-format {entry['reasoning_format']}")
-    elif entry.get("reasoning"):
-        lines.append("      --reasoning-format deepseek")
-    if entry.get("temp") is not None:
-        lines.append(f"      --temp {entry['temp']}")
-    if entry.get("top_p") is not None:
-        lines.append(f"      --top-p {entry['top_p']}")
-    if entry.get("extra"):
-        lines.append(f"      {entry['extra']}")
+    engine = entry.get("engine", "llama-server")
+    lines = [f"  # {name} — from models.yaml", f"  {name}:", "    cmd: |"]
+
+    if engine == "sd-server":
+        # stable-diffusion.cpp image server. llama-swap injects ${PORT}; it
+        # proxies /v1/images/generations to this upstream.
+        # NOTE: no --diffusion-fa — sd.cpp's diffusion flash-attention crashes
+        # sd-server during generation on Battlemage/Xe2 SYCL (exit 1). Opt back
+        # in per-model via `extra: --diffusion-fa` if a future build fixes it.
+        lines += [
+            "      /opt/sd-cpp/bin/sd-server",
+            f"      --model {cpath}",
+            "      --listen-ip 127.0.0.1",
+            "      --listen-port ${PORT}",
+        ]
+        if entry.get("threads"):
+            lines.append(f"      --threads {entry['threads']}")
+        if entry.get("extra"):
+            lines.append(f"      {entry['extra']}")
+    else:
+        lines += [
+            "      /opt/llama-cpp/bin/llama-server",
+            "      --port ${PORT}",
+            f"      --model {cpath}",
+            f"      --alias {name}",
+            "      --host 127.0.0.1",
+            "      -ngl 99",
+            f"      -c {entry.get('ctx', DEFAULT_CTX)}",
+            "      --device SYCL0",
+            "      -sm none",
+            "      --jinja",
+        ]
+        if entry.get("template"):
+            lines.append(f"      --chat-template-file /templates/{entry['template']}")
+        if entry.get("reasoning_format"):
+            lines.append(f"      --reasoning-format {entry['reasoning_format']}")
+        elif entry.get("reasoning"):
+            lines.append("      --reasoning-format deepseek")
+        if entry.get("temp") is not None:
+            lines.append(f"      --temp {entry['temp']}")
+        if entry.get("top_p") is not None:
+            lines.append(f"      --top-p {entry['top_p']}")
+        if entry.get("extra"):
+            lines.append(f"      {entry['extra']}")
+
+    if engine == "sd-server":
+        # llama-swap's default health probe is /health, which sd-server doesn't
+        # serve; point it at an endpoint sd-server answers once the model is up.
+        lines.append("    checkEndpoint: /v1/models")
     lines.append(f"    ttl: {entry.get('ttl', DEFAULT_TTL)}")
     return "\n".join(lines)
 

@@ -166,6 +166,22 @@ litellm_params:
 left-over `deepseek-r1:32b`). Then confirm each model actually answers through
 the proxy with `make test-models VIA=litellm`.
 
+## Image generation (sd-server) fails or crashes on Battlemage
+
+`engine: sd-server` models use stable-diffusion.cpp. Three Xe2-specific gotchas —
+all handled by this repo's Dockerfile/generator, but here's what they look like if
+you hit them in a hand-rolled config:
+
+- **502 "health check timed out" on the first generation** — sd-server doesn't
+  serve `/health` (llama-swap's default probe). The generated block sets
+  `checkEndpoint: /v1/models`; do the same if you write the config by hand.
+- **sd-server exits (`exit status 1`) mid-generation** — `--diffusion-fa`
+  (diffusion flash-attention) crashes on Xe2 SYCL. Don't pass it; this repo omits it.
+- **1024² crashes in VAE decode: `Provided range and/or offset does not fit in int
+  … Error OP IM2COL`** — int32 index overflow in the SYCL conv. Build sd.cpp with
+  `-DCMAKE_CXX_FLAGS=-fno-sycl-id-queries-fit-in-int` (the Dockerfile here does).
+  Resolutions ≤ 768² work even without it.
+
 ## Older errors that shouldn't happen with this repo, but just in case
 
 - **`sycl::_V1::exception: No device of requested type available`** — this was the failure mode of `intelanalytics/ipex-llm-inference-cpp-xpu`. Their compute-runtime predated Battlemage. This repo's image builds on a newer base; if you somehow still see this, follow the "fallback compute-runtime install" in the section above.
