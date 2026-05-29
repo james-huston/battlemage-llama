@@ -21,5 +21,6 @@ first** (write the story), **track progress** inside each story via the
 | # | Story | Status | Summary |
 |---|-------|--------|---------|
 | [001](001-sycl-image-generation.md) | SYCL image generation (stable-diffusion.cpp) | Review | On-demand text-to-image through the llama-swap UI/`/v1/images/generations`, served on the B70 via SYCL. Implemented + validated (SDXL 512²/768²/1024²); awaiting PR review. |
+| [002](002-civitai-downloader.md) | Civitai model downloads (proving model: CyberRealistic Pony) | Draft | Teach `make add-model` / `models.yaml` to fetch checkpoints from Civitai by version id (Bearer auth from `CIVITAI_API_KEY`), then add CyberRealistic Pony as the proving entry. Stacked on story 001. |
 
-_Overall: 0 done / 1 in review / 1 total._
+_Overall: 0 done / 1 in review / 1 draft / 2 total._
