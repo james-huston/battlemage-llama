@@ -143,29 +143,34 @@ models:
     dir: gpt-oss-20b
     source: "https://huggingface.co/ggml-org/gpt-oss-20b-GGUF"
     notes: >-
-      ~13 GB, 21B/A3.6B MoE, OpenAI open-weights. Strong tools + reasoning,
-      great diversity pick. VERIFY: (1) MXFP4 decode speed on Intel SYCL is
-      unknown — run llama-bench before trusting it; (2) uses OpenAI Harmony
-      format, not plain ChatML — confirm tool calls parse via the tool_use suite
-      (rely on --jinja + embedded template; reasoning channels -> reasoning_content).
+      ~13 GB, 21B/A3.6B MoE, OpenAI open-weights. Tool calling verified 6/6
+      required PASS on 2026-05-29 (basic, roundtrip, multi, no-tool, required,
+      streaming); parallel_tool_calls is advisory-only (serializes calls). MXFP4
+      confirmed serving on Intel SYCL — decode speed still unbenchmarked (run
+      llama-bench). Harmony channels handled by --jinja; no extra flags needed.
 
   - name: qwen3.5-35b-a3b-q4
     enabled: true
     ctx: 131072
     temp: 0.6
     top_p: 0.95
-    reasoning: true
+    reasoning_format: none
     repo: unsloth/Qwen3.5-35B-A3B-GGUF
     file: Qwen3.5-35B-A3B-Q4_K_M.gguf
     dir: qwen3.5-35b-a3b
     out: Q4_K_M.gguf
     source: "https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF"
     notes: >-
-      ~21 GB, MoE A3B successor to qwen3-30b-a3b. RE-TEST tool calling: our old
-      example config said "skip until upstream fixes", but Unsloth now report a
-      universal chat-template fix for Qwen3.5 tool calls. Multimodal repo (has
-      mmproj) but works text-only. Disable thinking via
-      --chat-template-kwargs '{"enable_thinking":false}' if desired.
+      ~21 GB, MoE A3B successor to qwen3-30b-a3b. Tool calling verified 6/7 on
+      2026-05-29 (basic, roundtrip, multi, no-tool, streaming all PASS) — the old
+      "skip until upstream fixes" <tool_call>-emission bug is resolved. Uses
+      reasoning_format: none because --reasoning-format deepseek mis-routes the
+      final answer into reasoning_content (empty content) on this A3B variant.
+      KNOWN ISSUE: tool_choice:required returns HTTP 400 "Failed to initialize
+      samplers" (forced-call grammar conflict) — don't rely on forced tool calls.
+      enable_thinking via --chat-template-kwargs crashes llama-server here (JSON
+      quoting breaks through llama-swap arg-splitting). Multimodal repo (mmproj)
+      but works text-only.
 
   - name: qwen3.5-27b-q4
     enabled: true
@@ -176,8 +181,10 @@ models:
     out: Q4_K_M.gguf
     source: "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF"
     notes: >-
-      ~17 GB, dense 27B. Start at 64k context and test 128k (dense models stress
-      KV/SYCL). Same tool-calling re-test caveat as the 35B-A3B.
+      ~17 GB, dense 27B. Tool calling verified 7/7 on 2026-05-29 — fully agentic,
+      no reasoning-format flag needed (the old Qwen3.5 "skip until upstream fixes"
+      bug is resolved). Running at 64k context; test 128k later (dense models
+      stress KV/SYCL).
 
   - name: qwen2.5-coder-32b-q4
     enabled: true
@@ -188,6 +195,9 @@ models:
     out: Q4_K_M.gguf
     source: "https://huggingface.co/bartowski/Qwen2.5-Coder-32B-Instruct-GGUF"
     notes: >-
-      ~20 GB, dense 32B, top-tier pure code-gen (~GPT-4o on code). Best as a
-      code/refactor/chat model — likely shares the wrong-tag tool-emission bug of
-      the rejected Qwen2.5-Coder-7B, so do NOT assume agentic tool use; verify.
+      ~20 GB, dense 32B, top-tier pure code-gen (~GPT-4o on code). NOT agentic:
+      verified 2026-05-29 it emits tool calls as plain JSON in content
+      ('{"name":...,"arguments":...}') instead of structured tool_calls —
+      basic/multi/streaming/roundtrip all FAIL (same model-output bias as the
+      rejected Qwen2.5-Coder-7B; no chat template fixes it). Keep ONLY as a
+      code-gen / refactor / chat model.

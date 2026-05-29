@@ -102,7 +102,9 @@ def generate_block(entry, cpath):
     ]
     if entry.get("template"):
         lines.append(f"      --chat-template-file /templates/{entry['template']}")
-    if entry.get("reasoning"):
+    if entry.get("reasoning_format"):
+        lines.append(f"      --reasoning-format {entry['reasoning_format']}")
+    elif entry.get("reasoning"):
         lines.append("      --reasoning-format deepseek")
     if entry.get("temp") is not None:
         lines.append(f"      --temp {entry['temp']}")
