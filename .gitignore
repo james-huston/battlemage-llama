@@ -17,3 +17,6 @@ __pycache__/
 *.swp
 *.swo
 *~
+
+# Claude Code local session artifacts (settings.local.json, scheduled task locks)
+.claude/
