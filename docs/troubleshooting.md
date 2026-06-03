@@ -166,6 +166,29 @@ litellm_params:
 left-over `deepseek-r1:32b`). Then confirm each model actually answers through
 the proxy with `make test-models VIA=litellm`.
 
+## Civitai downloads fail
+
+`make add-model REPO=civitai:<modelVersionId> …` (or `make models-apply` on a
+manifest entry with `repo: civitai:…`) talks to the Civitai REST API with a
+Bearer token from `CIVITAI_API_KEY` in `.env`. Common failures:
+
+- **`civitai metadata 401/403` or `civitai download 401/403`** — the API key is
+  missing or the file is gated. Set `CIVITAI_API_KEY` in `.env` (token from
+  [civitai.com/user/account](https://civitai.com/user/account), API Keys section).
+  If the model itself has a click-through terms-of-use page on the Civitai web
+  UI, the API can't bypass it — accept it once in a browser logged into the same
+  account, then retry.
+- **`civitai metadata 404`** — wrong id. Civitai has *model* ids (the
+  `civitai.com/models/<modelId>/…` URL) and *modelVersion* ids (which downloads
+  use). This stack expects the **modelVersionId** — open the model, pick a
+  version, and take the id from the URL (or `GET /api/v1/models/<modelId>` and
+  read `modelVersions[].id`).
+- **SHA256 mismatch on download** — the file is corrupt or partial. Delete it
+  and retry; `add-model.sh` resumes with `curl -C -`, but a corrupted file
+  won't fix itself.
+- **No primary file picked / multi-file version** — pass `--file <name>` (or
+  `file:` in `models.yaml`) to disambiguate.
+
 ## Image generation (sd-server) fails or crashes on Battlemage
 
 `engine: sd-server` models use stable-diffusion.cpp. Three Xe2-specific gotchas —

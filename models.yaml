@@ -19,6 +19,11 @@
 #     repo: + file:   download <file> from this HF repo into MODELS_DIR
 #       dir:   subdir under MODELS_DIR  (default: name)
 #       out:   save-as filename         (default: basename of file)
+#     repo: civitai:<modelVersionId> (+ out:)
+#                      Civitai download via scripts/add-model.sh — Bearer auth
+#                      from CIVITAI_API_KEY in .env. `file:` is optional (the
+#                      version's primary file is picked); `out:` gives the local
+#                      filename. SHA256 from Civitai is verified after download.
 #
 #   Runtime (optional; defaults match the Battlemage config we already run)
 #     ctx        default 131072   — cap dense 24B Mistral at 65536 (SYCL segfault)
@@ -332,3 +337,16 @@ models:
       supports_function_calling: false
     source: "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0 (single-file checkpoint; sd.cpp loads .safetensors directly)"
     notes: "Image generation (story 001). engine: sd-server -> /opt/sd-cpp/bin/sd-server. Per-image cost, not per-token, so no decode_tps/cost. Flux is a follow-up (needs split vae/t5/clip files)."
+
+  - name: cyberrealistic-pony
+    enabled: true
+    engine: sd-server
+    repo: civitai:2884631
+    out: cyberrealistic-pony.safetensors
+    dir: cyberrealistic-pony
+    litellm:
+      description: "CyberRealistic Pony v18 (Civitai 443821) — SDXL/Pony photorealistic fine-tune. POST /v1/images/generations."
+      mode: image_generation
+      supports_function_calling: false
+    source: "Civitai modelVersionId 2884631 (model 443821, v18.0 CoreShift)."
+    notes: "Story 002. Pony-based: positive prompt should start with `score_9, score_8_up, score_7_up, ...` for best results. Same VRAM/perf envelope as SDXL (~7 GB, ~30 s @ 1024² on the B70)."

@@ -151,7 +151,11 @@ DIR="${DIR:-${NAME}}"
 
 if [[ "${DO_DOWNLOAD}" -eq 1 ]]; then
     [[ -n "${REPO}" ]] || die "--repo is required to download (or pass --no-download / --model-path)."
-    [[ -n "${FILE}" ]] || die "--file is required to download (or pass --no-download / --model-path)."
+    # --file is required for Hugging Face; for Civitai it's optional (defaults
+    # to the version's primary file).
+    if [[ "${REPO}" != civitai:* ]]; then
+        [[ -n "${FILE}" ]] || die "--file is required to download (or pass --no-download / --model-path)."
+    fi
 fi
 
 if [[ -n "${TEMPLATE}" && ! -f "${TEMPLATES_DIR}/${TEMPLATE}" ]]; then
@@ -162,11 +166,130 @@ fi
 is_glob() { [[ "$1" == *"*"* || "$1" == *"?"* || "$1" == *"["* ]]; }
 
 # ---------------------------------------------------------------------------
+# Civitai support
+#
+# REPO=civitai:<modelVersionId> downloads the primary file of that version from
+# Civitai's API. CIVITAI_API_KEY (env > .env) is sent as Bearer auth — required
+# for gated files, recommended even for public ones (better rate limits). The
+# SHA256 is verified when Civitai surfaces it. --file optionally selects a
+# non-primary file in a multi-file version.
+# ---------------------------------------------------------------------------
+civitai_resolve_key() {
+    if [[ -n "${CIVITAI_API_KEY:-}" ]]; then echo "${CIVITAI_API_KEY}"; return; fi
+    if [[ -f "${ENV_FILE}" ]]; then
+        local v
+        v="$(grep -E '^[[:space:]]*CIVITAI_API_KEY[[:space:]]*=' "${ENV_FILE}" 2>/dev/null \
+              | tail -n1 | cut -d= -f2- | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//')"
+        [[ -n "${v}" ]] && { echo "${v}"; return; }
+    fi
+    echo ""
+}
+
+civitai_download() {
+    local version_id="$1"
+    [[ -n "${version_id}" ]] || die "civitai: missing modelVersionId (use REPO=civitai:<id>)."
+
+    local key=""
+    local auth=()
+    key="$(civitai_resolve_key)"
+    if [[ -n "${key}" ]]; then auth=(-H "Authorization: Bearer ${key}"); fi
+
+    echo "==> Downloading from Civitai"
+    echo "    version:  ${version_id}"
+    echo "    auth:     $([ -n "${key}" ] && echo 'CIVITAI_API_KEY (Bearer)' || echo 'unauthenticated (best-effort)')"
+    echo "    into:     ${DEST_DIR}/"
+
+    if [[ ! -d "${MODELS_DIR}" ]]; then
+        die "MODELS_DIR does not exist: ${MODELS_DIR}
+       Create it, or set MODELS_DIR (env or .env) to a path you own."
+    fi
+    if ! mkdir -p "${DEST_DIR}" 2>/dev/null || [[ ! -w "${DEST_DIR}" ]]; then
+        die "cannot write to ${DEST_DIR} — pick a writable MODELS_DIR."
+    fi
+
+    # 1. Fetch version metadata
+    local meta_status meta_file=/tmp/civi_meta.$$.json
+    meta_status="$(curl -sS --max-time 25 "${auth[@]}" -o "${meta_file}" -w '%{http_code}' \
+        "https://civitai.com/api/v1/model-versions/${version_id}")"
+    case "${meta_status}" in
+        200) ;;
+        401|403) rm -f "${meta_file}"; die "civitai metadata ${meta_status}: auth/gating on version ${version_id}.
+       Set CIVITAI_API_KEY in .env, or accept this model's terms on the Civitai web UI." ;;
+        404)     rm -f "${meta_file}"; die "civitai metadata 404: no such modelVersionId ${version_id}.
+       Open the model on civitai.com, pick a version, and use the modelVersionId from the URL." ;;
+        *)       rm -f "${meta_file}"; die "civitai metadata HTTP ${meta_status}." ;;
+    esac
+
+    # 2. Pick a file: --file by name if given, else primary, else first .safetensors
+    local picked
+    picked="$(WANT_FILE="${FILE:-}" python3 -c "
+import json, os, sys
+data = json.load(sys.stdin)
+want = os.environ.get('WANT_FILE', '')
+files = data.get('files') or []
+chosen = None
+if want:
+    chosen = next((f for f in files if f.get('name') == want), None)
+if not chosen:
+    chosen = next((f for f in files if f.get('primary')), None)
+if not chosen:
+    chosen = next((f for f in files if (f.get('name') or '').endswith('.safetensors')), None)
+if not chosen:
+    print('__NONE__'); sys.exit()
+print(chosen.get('name', ''))
+print(chosen.get('downloadUrl', ''))
+print((chosen.get('hashes') or {}).get('SHA256', ''))
+print(chosen.get('sizeKB') or '')
+" < "${meta_file}")"
+    rm -f "${meta_file}"
+    [[ "${picked%%$'\n'*}" == "__NONE__" ]] && die "civitai: no usable file in version ${version_id}. Pass --file <name>."
+
+    local cv_name cv_url cv_sha cv_size
+    cv_name="$(echo "$picked" | sed -n 1p)"
+    cv_url="$( echo "$picked" | sed -n 2p)"
+    cv_sha="$( echo "$picked" | sed -n 3p)"
+    cv_size="$(echo "$picked" | sed -n 4p)"
+
+    local target="${DEST_DIR}/${OUT:-${cv_name}}"
+    echo "    file:     ${cv_name} (${cv_size%.*} KB)"
+    [[ -n "$cv_sha" ]] && echo "    sha256:   ${cv_sha:0:16}…"
+
+    # 3. Download (curl follows 307 -> R2 signed URL via -L; -C - resumes)
+    local dl_status
+    dl_status="$(curl -SL --retry 3 -C - "${auth[@]}" -o "${target}" \
+        -w '%{http_code}' "${cv_url}")"
+    case "${dl_status}" in
+        200|206) ;;
+        401|403) die "civitai download ${dl_status}: auth/gating on the file.
+       Set CIVITAI_API_KEY in .env, or accept this model's terms on the Civitai web UI." ;;
+        404)     die "civitai download 404." ;;
+        *)       die "civitai download HTTP ${dl_status}." ;;
+    esac
+
+    # 4. SHA256 verify if surfaced
+    if [[ -n "${cv_sha}" ]] && command -v sha256sum >/dev/null 2>&1; then
+        local got
+        got="$(sha256sum "${target}" | awk '{print toupper($1)}')"
+        if [[ "${got}" == "${cv_sha}" ]]; then
+            echo "    sha256:   OK"
+        else
+            echo "    sha256:   MISMATCH — expected ${cv_sha:0:16}…, got ${got:0:16}…" >&2
+            die "civitai: SHA256 mismatch; delete the file and retry."
+        fi
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Download
 # ---------------------------------------------------------------------------
 DEST_DIR="${MODELS_DIR%/}/${DIR}"
 
 download() {
+    if [[ "${REPO}" == civitai:* ]]; then
+        civitai_download "${REPO#civitai:}"
+        return
+    fi
+
     echo "==> Downloading from Hugging Face"
     echo "    repo:   ${REPO} (@${BRANCH})"
     echo "    file:   ${FILE}"

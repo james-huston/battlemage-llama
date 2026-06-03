@@ -282,6 +282,17 @@ Measured on the Arc Pro B70 (SDXL, 20-step Euler A): ~5 s @ 512², ~13 s @ 768²
 in `models.yaml` (`engine: sd-server`, point `repo`/`file` at a checkpoint) and
 running `make models-apply`.
 
+**Civitai sources** are supported alongside Hugging Face — set `CIVITAI_API_KEY`
+in `.env` (token from [civitai.com/user/account](https://civitai.com/user/account))
+and use `repo: civitai:<modelVersionId>` on the manifest entry. Find the version
+id by opening the model on Civitai and selecting a version — it's **not** the
+model id in the user-facing URL `civitai.com/models/<modelId>/…`. `make
+add-model REPO=civitai:<id> NAME=… DIR=… OUT=…` works the same way ad-hoc
+(downloads the version's `primary` file, with Bearer auth and SHA256
+verification). The included `cyberrealistic-pony` manifest entry is the worked
+example. **Pony note**: prompts should start with `score_9, score_8_up,
+score_7_up, …` for best results.
+
 **Battlemage notes** (handled automatically): the sd.cpp build adds
 `-fno-sycl-id-queries-fit-in-int` (without it, 1024² VAE decode overflows int32 in
 the SYCL `IM2COL` op); flash attention (`--diffusion-fa`) is **off** (it crashes
