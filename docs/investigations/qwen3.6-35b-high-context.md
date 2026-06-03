@@ -77,7 +77,7 @@ softens but does not eliminate the falloff.
 | 3 | 06-03 | opencode (live) `limit.context` 262144 → 229376 for the 35B (7/8 headroom) | Partial — gives margin against the hard "context exceeded" crash, but does nothing for decode slowness or the model over-generating. Likely not the real fix. |
 | 4 | 06-03 | Quantify decode-vs-depth (llama-bench tg64) | **Decode cliff confirmed:** 78.7 t/s @0 → 50.2 @32k → 21.5 @131k. A 16k response at 131k ≈ 12.7 min. Root cause of the 6–14 min requests. Prefill @229k was >20 min (abandoned). |
 | 5 | 06-03 | opencode `model: litellm/qwen3-coder-30b` (default/build) + `agent.plan.model: …35b-a3b-q4-thinking` | **PASS.** `opencode run` (no `--model`) routed to `build · qwen3-coder-30b` and replied concisely; the 35B is now opt-in via the plan agent (Tab). Reconciled into the tracked app-config + README. |
-| 6 | _next_ | Real agentic command-running session on the new default; confirm fast + concise, no context-exceeded | _planned (needs an interactive opencode session)_ |
+| 6 | 06-03 | Real agentic command-running session on the new default | **PASS** — `qwen3-coder-30b` ran the commands fine (fast, no 14-min timeout). **Gotcha found:** after the config change, a *resumed* opencode session was still pinned to the 35B and kept timing out; the `model` default only applies to **new** sessions. Switching the model / starting a new session fixed it. |
 | 7 | _next_ | Decide interactive context for 35B (candidates 32k–64k, where decode is 50–78 t/s); reconcile server `-c` | _planned_ |
 
 ## Current config state (⚠️ drift to reconcile)
@@ -128,6 +128,12 @@ independent of the "context exceeded" boundary bug. Two durable takeaways:
    (`qwen3-coder-30b`, 83 t/s) so ordinary agentic work never touches the slow
    thinker, and keep the 35B-thinking as an explicitly-invoked / subagent
    "reasoning" agent. See the app-config docs for the opencode agent setup.
+   **Validated (exp #6):** the fast default ran an agentic command session cleanly.
+
+> **Per-session model pinning (gotcha):** opencode pins the model **per session**.
+> Changing the config `model` default only affects **new** sessions — a resumed
+> session keeps whatever model it was on (this is why the 35B kept getting used
+> after the routing change). Start a new session or switch the model in the picker.
 
 _Still open: the exact interactive context for the 35B, and whether opencode
 preserves reasoning across turns (a context amplifier). Update as tested._
