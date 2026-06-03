@@ -14,7 +14,7 @@
           "name": "Qwen3.6 35B A3B Thinking",
           "tool_call": true,
           "reasoning": true,
-          "limit": { "context": 131072, "output": 32768 }
+          "limit": { "context": 262144, "output": 32768 }
         },
         "qwen3.6-27b-q4": {
           "name": "Qwen3.6 27B",
