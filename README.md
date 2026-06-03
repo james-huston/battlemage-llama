@@ -141,6 +141,11 @@ GGUF dirs in `MODELS_DIR` that no enabled model references, so stale downloads a
 easy to spot. Follow with `make sync-litellm` and `make test-models`. Requires
 PyYAML (`pip install pyyaml`).
 
+> **Also update the client app configs.** When you add or remove a model, mirror
+> the change into the tracked client configs under
+> [`docs/app-configs/`](docs/app-configs/) (e.g. opencode) so clients don't list
+> dead models or miss new ones. See that folder's README for the checklist.
+
 ## Adding models ad-hoc with `make`
 
 For a quick one-off (without editing `models.yaml`), `make add-model` wraps
