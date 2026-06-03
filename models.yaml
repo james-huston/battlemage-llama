@@ -311,7 +311,7 @@ models:
       supports_function_calling: true
       supports_tool_choice: false
       supports_reasoning: true
-    ctx: 131072
+    ctx: 262144
     temp: 0.6
     top_p: 0.95
     reasoning_format: deepseek
@@ -331,6 +331,12 @@ models:
       token headroom (the suite only passed once max_tokens was raised from 256
       to 2048). decode_tps 79 t/s measured with llama-bench tg128 on 2026-06-03
       (pp512 1152 t/s). Carries the canonical download; qwen3.6-35b-a3b-q4 reuses it.
+      CONTEXT: run at the model's native 262144 (256K). The hybrid arch makes KV
+      cheap — only 10 of 40 layers carry a KV cache (full_attention_interval=4,
+      head_count_kv=2, key/value_length=256), so f16 KV is ~2.5 GiB @131k and
+      ~5.0 GiB @262k. At 262k total VRAM ≈ 20.6 (weights) + 5.0 (KV) + ~1.5
+      (compute) ≈ 27 GB on the 32 GB B70 (~5 GB headroom). Verify it loads clean
+      at 262k after the bump.
 
   - name: qwen3.6-35b-a3b-q4
     enabled: false
@@ -340,7 +346,7 @@ models:
       supports_function_calling: true
       supports_tool_choice: false
       supports_reasoning: false
-    ctx: 131072
+    ctx: 262144
     temp: 0.6
     top_p: 0.95
     reasoning_format: none
