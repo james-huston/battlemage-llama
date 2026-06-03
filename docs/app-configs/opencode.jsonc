@@ -1,0 +1,124 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "litellm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LiteLLM",
+      "options": {
+        "baseURL": "https://llm.araxia.cc/v1",
+        "apiKey": "{env:OPENCODE_LITELLM_API_KEY}"
+      },
+      "models": {
+        // ---- Qwen3.6 (newest) ----
+        "qwen3.6-35b-a3b-q4-thinking": {
+          "name": "Qwen3.6 35B A3B Thinking",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 32768 }
+        },
+        "qwen3.6-27b-q4": {
+          "name": "Qwen3.6 27B",
+          "tool_call": true,
+          "reasoning": false,
+          "limit": { "context": 65536, "output": 16384 }
+        },
+
+        // ---- Qwen3 coder / general ----
+        "qwen3-coder-30b": {
+          "name": "Qwen3 Coder 30B A3B",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 32768 }
+        },
+        "qwen3-30b-a3b": {
+          "name": "Qwen3 30B A3B",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 32768 }
+        },
+
+        // ---- Qwen3.5 ----
+        "qwen3.5-35b-a3b-q4-thinking": {
+          "name": "Qwen3.5 35B A3B Thinking",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 32768 }
+        },
+        "qwen3.5-35b-a3b-q4": {
+          "name": "Qwen3.5 35B A3B",
+          "tool_call": true,
+          "reasoning": false,
+          "limit": { "context": 131072, "output": 32768 }
+        },
+        "qwen3.5-27b-q4": {
+          "name": "Qwen3.5 27B",
+          "tool_call": true,
+          "reasoning": false,
+          "limit": { "context": 65536, "output": 16384 }
+        },
+
+        // ---- Qwen2.5 Coder (top code-gen, NO tool calling) ----
+        "qwen2.5-coder-32b-q4": {
+          "name": "Qwen2.5 Coder 32B",
+          "tool_call": false,
+          "reasoning": false,
+          "limit": { "context": 32768, "output": 8192 }
+        },
+
+        // ---- GLM-4.7 Flash (coder + agent) ----
+        "glm-4.7-flash-q4": {
+          "name": "GLM-4.7 Flash (Q4)",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 32768 }
+        },
+        "glm-4.7-flash-q5": {
+          "name": "GLM-4.7 Flash (Q5)",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 65536, "output": 16384 }
+        },
+
+        // ---- Devstral Small 2 (SWE-Bench) ----
+        "devstral-small-2-q4": {
+          "name": "Devstral Small 2 24B (Q4)",
+          "tool_call": true,
+          "reasoning": false,
+          "limit": { "context": 65536, "output": 16384 }
+        },
+        "devstral-small-2-q5": {
+          "name": "Devstral Small 2 24B (Q5)",
+          "tool_call": true,
+          "reasoning": false,
+          "limit": { "context": 65536, "output": 16384 }
+        },
+
+        // ---- General reasoning (coding-capable) ----
+        "gpt-oss-20b": {
+          "name": "GPT-OSS 20B",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 32768 }
+        },
+        "magistral-small-2509": {
+          "name": "Magistral Small 24B",
+          "tool_call": true,
+          "reasoning": false,
+          "limit": { "context": 65536, "output": 16384 }
+        },
+        "ministral-3-14b-q4": {
+          "name": "Ministral 3 14B (Q4)",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 32768 }
+        },
+        "ministral-3-14b-q5": {
+          "name": "Ministral 3 14B (Q5)",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 32768 }
+        }
+      }
+    }
+  }
+}
