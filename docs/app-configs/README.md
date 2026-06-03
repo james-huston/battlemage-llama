@@ -65,8 +65,17 @@ provider (`@ai-sdk/openai-compatible`) and lists every coding-capable model.
   which looks like a missing key but is actually the redirect eating it.
 - **`limit` needs both `context` *and* `output`.** opencode's schema rejects a
   `limit` with only `context` (`SchemaError: Missing key … ["limit"]["output"]`),
-  and that failure cascades into `4 of 5 requests failed` at startup. We set
-  `output` to ~`context / 4` so there's always room for input.
+  and that failure cascades into `4 of 5 requests failed` at startup.
+- **Keep `output` modest — it's a runaway throttle, not just a budget.** `output`
+  is the per-response `max_tokens`. On a single-GPU local stack, a too-high cap is
+  dangerous: a heavy-thinking model (e.g. Qwen3.6-35B) that rambles or loops will
+  generate to the cap, and at ~79 t/s a 32768 cap = **~7 min of solid GPU per
+  request** — long enough to blow past client timeouts. We cap at **16384**
+  (≤ ~3.5 min) — plenty for real code/diffs and deep reasoning, but bounded. A
+  lower cap also leaves *more* room for input context (opencode reserves `output`
+  out of `context`). Pair this with LiteLLM `num_retries: 0` (see
+  [`scripts/sync-litellm.py`](../../scripts/sync-litellm.py)) so a timed-out call
+  isn't re-fired into back-to-back generations.
 - **The key must come from `options.apiKey`.** For a custom `npm` provider,
   opencode does **not** auto-apply a key stored via `/connect` (auth.json). Use
   `"apiKey": "{env:OPENCODE_LITELLM_API_KEY}"` in `options`.
@@ -86,4 +95,5 @@ Each model carries the capabilities opencode needs to drive it correctly:
   (top code-gen but emits tool calls as plain JSON, so it's chat/edit-only).
 - `reasoning` — `true` for the `-thinking` / reasoning models (exposes the
   reasoning stream).
-- `limit.context` / `limit.output` — mirror each model's `ctx` from `models.yaml`.
+- `limit.context` — mirror each model's `ctx` from `models.yaml`.
+- `limit.output` — capped at **16384** (runaway throttle; see the gotcha above).
