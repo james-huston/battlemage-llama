@@ -305,7 +305,7 @@ models:
   # download); the none variant is disabled but kept for flip-on.
   - name: qwen3.6-35b-a3b-q4-thinking
     enabled: true
-    decode_tps: 55
+    decode_tps: 79
     litellm:
       description: "Qwen3.6 MoE A3B (hybrid DeltaNet+MoE), reasoning exposed (deepseek); agentic coding."
       supports_function_calling: true
@@ -329,12 +329,12 @@ models:
       honored (model answers in prose, then degenerates into an emoji-repeat
       loop) — hence supports_tool_choice: false. Heavy default-thinker: give it
       token headroom (the suite only passed once max_tokens was raised from 256
-      to 2048). decode_tps is a placeholder copied from 3.5 — re-benchmark with
-      llama-bench. Carries the canonical download; qwen3.6-35b-a3b-q4 reuses it.
+      to 2048). decode_tps 79 t/s measured with llama-bench tg128 on 2026-06-03
+      (pp512 1152 t/s). Carries the canonical download; qwen3.6-35b-a3b-q4 reuses it.
 
   - name: qwen3.6-35b-a3b-q4
     enabled: false
-    decode_tps: 55
+    decode_tps: 79
     litellm:
       description: "Qwen3.6 MoE A3B, raw thinking inline in content (reasoning_format: none)."
       supports_function_calling: true
@@ -357,7 +357,7 @@ models:
 
   - name: qwen3.6-27b-q4
     enabled: true
-    decode_tps: 24
+    decode_tps: 25
     litellm:
       description: "Qwen3.6 dense 27B; strong agentic coding (beats prior 397B flagship on code). Tool calling, no forced choice."
       supports_function_calling: true
@@ -378,7 +378,8 @@ models:
       dense 27B which passed 7/7. Also a heavy default-thinker — needs token
       headroom. Multimodal repo (ships mmproj vision projectors) but run
       text-only here. Running at 64k ctx like the 3.5 dense; test 128k later.
-      decode_tps is a placeholder — re-benchmark with llama-bench.
+      decode_tps 25 t/s measured with llama-bench tg128 on 2026-06-03
+      (24.94 ± 0.04; pp512 781 t/s).
 
   - name: qwen2.5-coder-32b-q4
     enabled: true
