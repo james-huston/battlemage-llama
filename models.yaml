@@ -298,6 +298,88 @@ models:
       bug is resolved). Running at 64k context; test 128k later (dense models
       stress KV/SYCL).
 
+  # Qwen3.6 A3B is a thinking-by-default model. UNLIKE the 3.5 A3B, deepseek
+  # routing is the CLEAN one here: it splits the <think> block into
+  # reasoning_content. reasoning_format: none leaks raw <think>...</think> into
+  # content — so the -thinking variant below is canonical (it carries the
+  # download); the none variant is disabled but kept for flip-on.
+  - name: qwen3.6-35b-a3b-q4-thinking
+    enabled: true
+    decode_tps: 55
+    litellm:
+      description: "Qwen3.6 MoE A3B (hybrid DeltaNet+MoE), reasoning exposed (deepseek); agentic coding."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: true
+    ctx: 131072
+    temp: 0.6
+    top_p: 0.95
+    reasoning_format: deepseek
+    repo: unsloth/Qwen3.6-35B-A3B-GGUF
+    file: Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+    dir: qwen3.6-35b-a3b
+    out: Q4_K_M.gguf
+    source: "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF"
+    notes: >-
+      ~22 GB, MoE A3B successor to qwen3.5-35b-a3b. Hybrid Gated-DeltaNet (linear
+      attention) + MoE arch loads fine on our pinned llama.cpp (b1-da3f990).
+      Tool calling verified 6/7 on 2026-06-03 (basic, roundtrip, multi,
+      no-tool, streaming, parallel all PASS) with deepseek routing splitting
+      content/reasoning_content cleanly. KNOWN ISSUE: tool_choice:required is NOT
+      honored (model answers in prose, then degenerates into an emoji-repeat
+      loop) — hence supports_tool_choice: false. Heavy default-thinker: give it
+      token headroom (the suite only passed once max_tokens was raised from 256
+      to 2048). decode_tps is a placeholder copied from 3.5 — re-benchmark with
+      llama-bench. Carries the canonical download; qwen3.6-35b-a3b-q4 reuses it.
+
+  - name: qwen3.6-35b-a3b-q4
+    enabled: false
+    decode_tps: 55
+    litellm:
+      description: "Qwen3.6 MoE A3B, raw thinking inline in content (reasoning_format: none)."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: false
+    ctx: 131072
+    temp: 0.6
+    top_p: 0.95
+    reasoning_format: none
+    path: /models/qwen3.6-35b-a3b/Q4_K_M.gguf
+    source: "Same GGUF as qwen3.6-35b-a3b-q4-thinking (unsloth/Qwen3.6-35B-A3B-GGUF)."
+    notes: >-
+      DISABLED by default. Same weights as qwen3.6-35b-a3b-q4-thinking, run with
+      reasoning_format: none — which on 3.6 leaks the <think>...</think> block
+      into content (3.6 thinks by default and none does not strip it). Tool
+      calling still works (6/7), but content carries raw think tags. Flip
+      enabled: true only if you want inline thinking (e.g. an OpenWebUI that
+      renders <think> as collapsible) and prefer the -thinking sibling for
+      LiteLLM. Path-based — depends on the -thinking entry having downloaded.
+
+  - name: qwen3.6-27b-q4
+    enabled: true
+    decode_tps: 24
+    litellm:
+      description: "Qwen3.6 dense 27B; strong agentic coding (beats prior 397B flagship on code). Tool calling, no forced choice."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: false
+    ctx: 65536
+    repo: unsloth/Qwen3.6-27B-GGUF
+    file: Qwen3.6-27B-Q4_K_M.gguf
+    dir: qwen3.6-27b
+    out: Q4_K_M.gguf
+    source: "https://huggingface.co/unsloth/Qwen3.6-27B-GGUF"
+    notes: >-
+      ~17 GB, dense 27B successor to qwen3.5-27b. Headline coding model of the
+      3.6 line. Tool calling verified 6/7 on 2026-06-03 (basic, roundtrip,
+      multi, no-tool, streaming, parallel all PASS). KNOWN ISSUE:
+      tool_choice:required is NOT honored (answers in prose / times out on the
+      forced-call prompt) — hence supports_tool_choice: false, UNLIKE the 3.5
+      dense 27B which passed 7/7. Also a heavy default-thinker — needs token
+      headroom. Multimodal repo (ships mmproj vision projectors) but run
+      text-only here. Running at 64k ctx like the 3.5 dense; test 128k later.
+      decode_tps is a placeholder — re-benchmark with llama-bench.
+
   - name: qwen2.5-coder-32b-q4
     enabled: true
     decode_tps: 18
