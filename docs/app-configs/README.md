@@ -65,8 +65,18 @@ provider (`@ai-sdk/openai-compatible`) and lists every coding-capable model.
   which looks like a missing key but is actually the redirect eating it.
 - **`limit` needs both `context` *and* `output`.** opencode's schema rejects a
   `limit` with only `context` (`SchemaError: Missing key … ["limit"]["output"]`),
-  and that failure cascades into `4 of 5 requests failed` at startup. We set
-  `output` to ~`context / 4` so there's always room for input.
+  and that failure cascades into `4 of 5 requests failed` at startup.
+- **Keep `output` modest — it's a runaway throttle.** `output` is the per-response
+  `max_tokens`. On a single-GPU stack a too-high cap is dangerous: a rambling
+  model generates to the cap, and decode *also slows sharply at high context*
+  (e.g. the 35B drops from ~79 t/s to ~21 t/s at 131k), so a 16k response can take
+  10+ min and outlast client timeouts. We cap at **16384**. Pair with LiteLLM
+  `num_retries: 0` (see [`scripts/sync-litellm.py`](../../scripts/sync-litellm.py))
+  so a timed-out call isn't re-fired. See
+  [the investigation](../investigations/qwen3.6-35b-high-context.md).
+- **Keep client `limit.context` *below* the server's `-c`.** If they're equal,
+  prompt + generation can tip over `n_ctx` mid-stream (`Context size has been
+  exceeded`). We leave headroom (e.g. 35B server `-c 262144`, client `229376`).
 - **The key must come from `options.apiKey`.** For a custom `npm` provider,
   opencode does **not** auto-apply a key stored via `/connect` (auth.json). Use
   `"apiKey": "{env:OPENCODE_LITELLM_API_KEY}"` in `options`.
@@ -86,4 +96,27 @@ Each model carries the capabilities opencode needs to drive it correctly:
   (top code-gen but emits tool calls as plain JSON, so it's chat/edit-only).
 - `reasoning` — `true` for the `-thinking` / reasoning models (exposes the
   reasoning stream).
-- `limit.context` / `limit.output` — mirror each model's `ctx` from `models.yaml`.
+- `limit.context` — set *below* the server's `-c` (headroom; see the gotcha above).
+- `limit.output` — capped at **16384** (runaway throttle; see the gotcha above).
+
+### Model routing (agents)
+
+opencode has no content-based auto-router, but it routes by **agent**, which is
+enough to keep the slow heavy-thinker out of the hot loop:
+
+```jsonc
+"model": "litellm/qwen3-coder-30b",   // default — the build/execute agent
+"agent": {
+  "plan": { "model": "litellm/qwen3.6-35b-a3b-q4-thinking" }  // read-only planning
+}
+```
+
+- **`build`** (default agent: runs commands, edits, the tight agentic loop) → a
+  fast, concise coder (`qwen3-coder-30b`, ~83 t/s). Ordinary "run these commands"
+  work uses this **automatically** — no manual switching.
+- **`plan`** (opencode's read-only planning agent, toggled with Tab) → the 35B
+  thinker, for deep reasoning where slowness is tolerable (no command loop).
+
+Why this matters: a heavy default-thinker in the build loop generates long
+reasoning every turn *and* decodes slowly as context fills — see
+[the investigation](../investigations/qwen3.6-35b-high-context.md).

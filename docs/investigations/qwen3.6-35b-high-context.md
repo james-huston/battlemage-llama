@@ -76,19 +76,22 @@ softens but does not eliminate the falloff.
 | 2 | 06-03 | opencode `limit.output` 32768 → 16384 (runaway throttle); LiteLLM `num_retries: 0` + `timeout: 900` | Stopped the retry-storm GPU lock. Did **not** fix slow/long generations at high context. |
 | 3 | 06-03 | opencode (live) `limit.context` 262144 → 229376 for the 35B (7/8 headroom) | Partial — gives margin against the hard "context exceeded" crash, but does nothing for decode slowness or the model over-generating. Likely not the real fix. |
 | 4 | 06-03 | Quantify decode-vs-depth (llama-bench tg64) | **Decode cliff confirmed:** 78.7 t/s @0 → 50.2 @32k → 21.5 @131k. A 16k response at 131k ≈ 12.7 min. Root cause of the 6–14 min requests. Prefill @229k was >20 min (abandoned). |
-| 5 | _next_ | Set opencode default model to a fast non-thinking coder (`qwen3-coder-30b`, 83 t/s); keep 35B-thinking as an on-demand agent | _planned_ |
-| 6 | _next_ | Decide interactive context for 35B (candidates 32k–64k, where decode is 50–78 t/s) | _planned_ |
+| 5 | 06-03 | opencode `model: litellm/qwen3-coder-30b` (default/build) + `agent.plan.model: …35b-a3b-q4-thinking` | **PASS.** `opencode run` (no `--model`) routed to `build · qwen3-coder-30b` and replied concisely; the 35B is now opt-in via the plan agent (Tab). Reconciled into the tracked app-config + README. |
+| 6 | _next_ | Real agentic command-running session on the new default; confirm fast + concise, no context-exceeded | _planned (needs an interactive opencode session)_ |
+| 7 | _next_ | Decide interactive context for 35B (candidates 32k–64k, where decode is 50–78 t/s); reconcile server `-c` | _planned_ |
 
 ## Current config state (⚠️ drift to reconcile)
 
 - **Server** (`models.yaml` on `main`): `qwen3.6-35b-a3b` `ctx: 262144`.
 - **Live** opencode (`~/.config/opencode/opencode.jsonc`): 35B `context: 229376`,
   all outputs `16384`.
-- **Tracked** opencode (`docs/app-configs/opencode.jsonc` on `main`): 35B
-  `context: 131072`, outputs `32768` — **stale**. The 256K-bump and 16384-cap
-  commits were pushed to the `docs/app-configs` branch *after* PR #6 had already
-  merged, so they never reached `main` (orphaned on the branch). Reconcile once
-  this investigation settles on a final value.
+- **Tracked** opencode (`docs/app-configs/opencode.jsonc`): **reconciled in this
+  branch** to match live (16384 caps, 35B `context: 229376`, + the new
+  `model`/`agent` routing). It had been stale on `main` (35B `131072`/`32768`)
+  because the 256K-bump and 16384-cap commits were pushed to the `docs/app-configs`
+  branch *after* PR #6 merged (orphaned). Now back in sync.
+
+Server `-c` for the 35B is still 262144 (open: exp #7 may lower it).
 
 ## Candidate fixes (to test)
 
