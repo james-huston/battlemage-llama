@@ -8,6 +8,21 @@ Tracks the **starting values** for each Gemma 4 model and **every change** we ma
 as we benchmark and tune — so the reasoning is recorded, not lost. Applies the
 lessons from the [Qwen3.6-35B high-context investigation](qwen3.6-35b-high-context.md).
 
+## Summary so far (2026-06-04)
+
+- **Three models added & validated** (12B dense, 26B-A4B MoE, 31B dense). All load,
+  all do **structured tool calling (6/7)**, all are **reasoners** (`supports_reasoning:
+  true`). `tool_choice:required` is not honored on any (→ `supports_tool_choice: false`).
+- **Gemma sampling** (temp **1.0**, top_k 64, top_p 0.95, min_p 0, sampler order) — not Qwen's 0.6.
+- **Decode (B70):** 26B-A4B **74.9 t/s** (fastest, MoE) > 12B 51.9 > 31B 23.0. Cliff is mild.
+- **Reasoning works cleanly at the serving temp** — always returns a `content` answer,
+  bounded verbosity (well under the 16384 cap). The empty-content scare was a temp-0
+  greedy artifact only → **keep the reasoning split, no mitigation.**
+- **Quant (12B):** **Q4 is the sweet spot** — Q5/Q6 cost 12–21% decode speed for an
+  unobservable quality gain (perplexity was unusable on SYCL).
+- **Still open:** raise ctx (headroom exists), speculative-decoding draft models,
+  26B/31B quant (expect even smaller differences).
+
 ## The family (verified from unsloth GGUF repos)
 
 | Model | Arch | Quant / VRAM | Native ctx | Released |
@@ -81,6 +96,7 @@ to Qwen3.6's hybrid DeltaNet). All ship a **draft model for speculative decoding
 | 06-04 | all | ~~exp 4 reasoning: no think channel~~ (SUPERSEDED) | Initial read on trivial prompts; wrong — see correction below. |
 | 06-04 | all | **CORRECTION — Gemma 4 IS a reasoner → `supports_reasoning: true`** | "Show your steps" prompts route long step-by-step into `reasoning_content` (llama.cpp auto-parses it; no `--reasoning-format` flag). Trivial "OK"/tool prompts just don't trigger it. Verbose: at temp 0 it over-reasoned past 2048 tokens and returned **empty `content`** with `finish_reason: length` (the Qwen-35B lesson — needs token headroom). Flipped `supports_reasoning: true` for all 3. |
 | 06-04 | gemma-4-12b | **Quant sweep Q4/Q5/Q6** (speed + greedy quality; see section below) | Decode: Q4 51.9 / Q5 45.6 / Q6 41.2 t/s. Quality indistinguishable on in-ability prompts; perplexity broken on SYCL. Verdict: **Q4 is the sweet spot.** |
+| 06-04 | gemma-4-12b | **Reasoning-verbosity verify @ temp 1.0** (9 trials, 3 prompt types) | At the *serving* temp it always `finish=stop` and **always returns the answer in `content`** — the temp-0 empty-content was a greedy-loop artifact, not a real issue. Reasoning scales with difficulty (simple ~35–60 tok, coding ~950–1300, hard math ~830–1900) and stays well under the 16384 cap. Small "thinking tax" on trivial Qs (~1s). **Conclusion: keep the reasoning split; no mitigation needed.** |
 
 ## Quant comparison — gemma-4-12b Q4 vs Q5 vs Q6 (2026-06-04)
 
