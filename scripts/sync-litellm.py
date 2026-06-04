@@ -50,6 +50,17 @@ import urllib.request
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(REPO_ROOT, ".env")
 
+# Per-model reliability params baked into each model's litellm_params.
+#   num_retries=0 — these are single-GPU local models: a failed/timed-out call
+#     must NOT be re-fired, because each attempt is a full GPU generation. A
+#     default of 2 turned one stuck request into 3 back-to-back ~7-min runs and
+#     pegged the GPU. One attempt only.
+#   timeout — a generous per-attempt ceiling (worst case = long-context prefill
+#     + the client's capped output), so LiteLLM eventually gives up instead of
+#     hanging forever, but legit long requests still complete.
+MODEL_NUM_RETRIES = 0
+MODEL_TIMEOUT = 900
+
 
 def die(msg):
     print(f"error: {msg}", file=sys.stderr)
@@ -190,6 +201,8 @@ def fetch_litellm_models(litellm, key, timeout):
             "db_model": bool(info.get("db_model")),
             "model": params.get("model"),
             "api_base": params.get("api_base"),
+            "num_retries": params.get("num_retries"),
+            "timeout": params.get("timeout"),
             "info": info,
         }
     return models
@@ -275,7 +288,8 @@ def main():
         print()
 
     def desired_params(model_id):
-        return {"model": f"{provider}/{model_id}", "api_base": api_base, "api_key": model_api_key}
+        return {"model": f"{provider}/{model_id}", "api_base": api_base, "api_key": model_api_key,
+                "num_retries": MODEL_NUM_RETRIES, "timeout": MODEL_TIMEOUT}
 
     def desired_info(model_id):
         return model_infos.get(model_id) or None
@@ -300,6 +314,7 @@ def main():
         if cur is None:
             to_add.append(model_id)
         elif (cur["model"] != f"{provider}/{model_id}" or cur["api_base"] != api_base
+              or cur.get("num_retries") != MODEL_NUM_RETRIES or cur.get("timeout") != MODEL_TIMEOUT
               or info_drifted(model_id, cur)):
             if cur["db_model"]:
                 to_update.append(model_id)
