@@ -419,7 +419,7 @@ models:
       description: "Gemma 4 12B (Google) dense, multimodal (text-only here); full tool calling (tool_choice:required not honored)."
       supports_function_calling: true
       supports_tool_choice: false
-      supports_reasoning: false
+      supports_reasoning: true
     ctx: 65536
     temp: 1.0
     top_p: 0.95
@@ -447,7 +447,7 @@ models:
       description: "Gemma 4 26B-A4B (Google) MoE, 4B active; full tool calling (tool_choice:required not honored)."
       supports_function_calling: true
       supports_tool_choice: false
-      supports_reasoning: false
+      supports_reasoning: true
     ctx: 65536
     temp: 1.0
     top_p: 0.95
@@ -473,7 +473,7 @@ models:
       description: "Gemma 4 31B (Google) dense; strongest Gemma 4; full tool calling (tool_choice:required not honored)."
       supports_function_calling: true
       supports_tool_choice: false
-      supports_reasoning: false
+      supports_reasoning: true
     ctx: 32768
     temp: 1.0
     top_p: 0.95

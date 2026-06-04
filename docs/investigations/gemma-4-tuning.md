@@ -78,7 +78,46 @@ to Qwen3.6's hybrid DeltaNet). All ship a **draft model for speculative decoding
 | 06-04 | all | **exp 1 load+smoke: PASS** | All 3 load on SYCL0, clean "OK" replies, no leaked tokens. |
 | 06-04 | all | **exp 3 tool-use: 6/7 PASS → `supports_function_calling: true`** | Structured `tool_calls` (NOT the prompt-based JSON failure I feared) — basic/roundtrip/multi/no-tool/streaming/parallel all PASS. `tool_choice:required` NOT honored (answers in prose then 🌻 emoji-loops, like Qwen3.6) → `supports_tool_choice: false` kept. |
 | 06-04 | all | **exp 2 decode bench (llama-bench tg64, t/s @ d0 / @ d32k)** | 12b **51.8 / 34.8**; 26b-a4b **74.9 / 45.5** (fastest — A4B!); 31b **23.0 / 12.7**. `decode_tps` set 52 / 75 / 23. Cliff is *moderate* (B70 bandwidth >> the APU) — only ~33% drop by 32k, so ctx headroom exists. |
-| 06-04 | all | **exp 4 reasoning: no think channel** | Replies were plain prose, no `<think>` → `supports_reasoning: false` kept (incl. the 26B "reasoning" model). |
+| 06-04 | all | ~~exp 4 reasoning: no think channel~~ (SUPERSEDED) | Initial read on trivial prompts; wrong — see correction below. |
+| 06-04 | all | **CORRECTION — Gemma 4 IS a reasoner → `supports_reasoning: true`** | "Show your steps" prompts route long step-by-step into `reasoning_content` (llama.cpp auto-parses it; no `--reasoning-format` flag). Trivial "OK"/tool prompts just don't trigger it. Verbose: at temp 0 it over-reasoned past 2048 tokens and returned **empty `content`** with `finish_reason: length` (the Qwen-35B lesson — needs token headroom). Flipped `supports_reasoning: true` for all 3. |
+| 06-04 | gemma-4-12b | **Quant sweep Q4/Q5/Q6** (speed + greedy quality; see section below) | Decode: Q4 51.9 / Q5 45.6 / Q6 41.2 t/s. Quality indistinguishable on in-ability prompts; perplexity broken on SYCL. Verdict: **Q4 is the sweet spot.** |
+
+## Quant comparison — gemma-4-12b Q4 vs Q5 vs Q6 (2026-06-04)
+
+Tested on the B70 to see if Q5/Q6 are worth it. Designed to *expose* differences
+(smallest model = most quant-sensitive; greedy temp-0 to remove sampling noise).
+
+**Speed** (`llama-bench`, SYCL0):
+
+| Quant | Size | Prefill pp512 | Decode tg128 | vs Q4 decode |
+|---|---|---|---|---|
+| Q4_K_M | 6.6 GiB | 1846 t/s | **51.9 t/s** | — |
+| Q5_K_M | 7.8 GiB | 2103 t/s | 45.6 t/s | −12% |
+| Q6_K | 9.1 GiB | 2040 t/s | 41.2 t/s | **−21%** |
+
+Decode scales with size (memory-bandwidth-bound), exactly as expected.
+
+**Quality** (greedy temp-0, 4 prompts with objective answers):
+
+| Prompt | Q4 | Q5 | Q6 |
+|---|---|---|---|
+| caffeine N-atoms (→4) | ✓ | ✓ | ✓ |
+| `is_balanced` code (→True,False) | ✓ | ✓ | ✓ |
+| 240-apples math (→150) | ✗ over-reasoned | ✗ over-reasoned | ✓ 150 |
+| ints 1–30 not div 2/3/5 | ✗ over-reasoned | ✗ over-reasoned | ✗ over-reasoned |
+
+- **Perplexity (the rigorous metric) was unusable** — `llama-perplexity` core-dumps /
+  returns garbage (PPL ~640–840 vs the expected ~8–12) on this SYCL build for
+  Gemma 4. Generation itself is fine; it's a tooling bug. No objective quality number.
+- On prompts inside the 12B's ability (facts, code), **Q4 = Q5 = Q6** — no visible
+  difference. The math/constraint "failures" are the *reasoning-verbosity* problem
+  (over-reasoning past the token budget at temp 0), not a clean quant signal; Q6
+  happened to finish the math, but that's within the noise.
+
+### Verdict: **stay on Q4 for the 12B.**
+Q5/Q6 cost real decode speed (−12% / −21%) for a quality gain too small to observe
+here. Keep Q4 unless a specific quality-critical use later shows a difference.
+(Q5/Q6 GGUFs left on disk for now; temp llama-swap entries removed.)
 
 ## Open questions
 
