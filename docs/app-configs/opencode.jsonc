@@ -125,6 +125,26 @@
           "tool_call": true,
           "reasoning": true,
           "limit": { "context": 131072, "output": 16384 }
+        },
+
+        // ---- Gemma 4 (Google) — tools 6/7 (structured); reasoner (verbose); Gemma sampling set server-side ----
+        "gemma-4-12b": {
+          "name": "Gemma 4 12B",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 57344, "output": 16384 }
+        },
+        "gemma-4-26b-a4b": {
+          "name": "Gemma 4 26B-A4B (MoE)",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 57344, "output": 16384 }
+        },
+        "gemma-4-31b": {
+          "name": "Gemma 4 31B",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 28672, "output": 8192 }
         }
       }
     }
