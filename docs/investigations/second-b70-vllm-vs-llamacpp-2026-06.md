@@ -102,6 +102,51 @@ don't bank on a prefill blowout.
   (#41663) could be fixed any week and would materially improve vLLM's case —
   **re-check before buying.**
 
+## Addendum (2026-06-04): measured opencode concurrency — it's serial
+
+One open question below was *"what concurrency does our workload actually reach?"* —
+since vLLM only helps above ~1–4 concurrent requests. We measured it directly from
+the llama-swap logs during a live opencode coding session.
+
+**Method.** Parsed 60 consecutive `POST /v1/chat/completions` from the llama-swap
+log, reconstructing each request's start (`completion_timestamp − duration`) and
+checking whether any request began before the previous one finished.
+
+**Result: 60 requests, 0 overlaps.** Every request starts *after* the prior one
+completes, with a consistent ~250–350 ms gap:
+
+```
+...ends 19:32:14.280 → next starts 19:32:14.531   (251 ms gap)
+...ends 19:32:16.555 → next starts 19:32:16.799   (244 ms gap)
+requests: 60 | concurrent (overlapping) starts: 0
+```
+
+That gap is opencode executing the turn's tool calls locally (bash/read/edit) and
+assembling the next message. The agentic loop is strictly **send → generate → run
+tools → send next** — one in-flight LLM request at a time, by design. Even an
+assistant turn with *multiple* tool calls runs those tools locally and only fires
+the next LLM request once they all return.
+
+**Implication — vLLM is the wrong tool for this workload.** With zero concurrency
+there is nothing for vLLM's continuous batching to batch; we'd simply inherit its
+*worse* single-stream decode (~13.85 vs ~59 t/s). The long requests in the trace
+(72 s, 120 s) are single big-prompt **prefills** (the plan-execution latency), not
+concurrency — and vLLM wouldn't parallelize one request (its prefill-advantage
+claim was the one this report *refuted*, 1-2).
+
+**Two further notes.**
+- The current llama-server runs **`-np 1`** (single slot — no `--parallel` flag),
+  so even if opencode *did* fire concurrent requests they would queue and serialize
+  anyway. Today, concurrency = queuing = worse latency.
+- Concurrency would only appear from **parallel subagents**, **multiple
+  sessions/users**, or aux title/summary calls (none overlapped here). The cheap
+  first lever for *light* concurrency is **`-np 2`** on the single B70 (2 slots,
+  128K KV → 2×64K) — not vLLM, and not a 2nd card.
+
+This is concrete backing for the recommendation above: **single-stream serial is
+our real pattern → stay on llama.cpp + llama-swap.** vLLM remains a "sustained
+many-request load" play we don't currently reach.
+
 ## Open questions for the revisit
 
 - Real measured throughput of a *stable* vLLM TP=2 on two B70 under realistic concurrency?
