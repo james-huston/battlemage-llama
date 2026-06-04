@@ -25,9 +25,9 @@ to Qwen3.6's hybrid DeltaNet). All ship a **draft model for speculative decoding
 
 | Model | ctx | temp | top_k | top_p | min_p | sampler order | tools | reasoning |
 |---|---|---|---|---|---|---|---|---|
-| gemma-4-12b | 65536 | 1.0 | 64 | 0.95 | 0.0 | temperature;top_p;top_k | ❓ off | ❓ off |
-| gemma-4-26b-a4b | 65536 | 1.0 | 64 | 0.95 | 0.0 | temperature;top_p;top_k | ❓ off | ❓ off |
-| gemma-4-31b | 32768 | 1.0 | 64 | 0.95 | 0.0 | temperature;top_p;top_k | ❓ off | ❓ off |
+| gemma-4-12b | 65536 | 1.0 | 64 | 0.95 | 0.0 | temperature;top_p;top_k | ✅ on | ✗ off |
+| gemma-4-26b-a4b | 65536 | 1.0 | 64 | 0.95 | 0.0 | temperature;top_p;top_k | ✅ on | ✗ off |
+| gemma-4-31b | 32768 | 1.0 | 64 | 0.95 | 0.0 | temperature;top_p;top_k | ✅ on | ✗ off |
 
 ### Why these values (Qwen lessons applied)
 
@@ -53,15 +53,15 @@ to Qwen3.6's hybrid DeltaNet). All ship a **draft model for speculative decoding
 
 ## Verification plan
 
-- [ ] **exp 1 — load + smoke:** download, `make models-apply`, load each on SYCL0,
+- [x] **exp 1 — load + smoke:** download, `make models-apply`, load each on SYCL0,
       confirm `/v1` responds with Gemma sampling.
-- [ ] **exp 2 — decode-vs-context bench:** `llama-bench` tg at depths
+- [x] **exp 2 — decode-vs-context bench:** `llama-bench` tg at depths
       (0/32k/65k/131k) per model → replace placeholder `decode_tps`, decide how
       high ctx can safely go (esp. the cheap-KV sliding-window angle).
-- [ ] **exp 3 — tool-use suite:** run `tests/tool_use` on each. Flip
+- [x] **exp 3 — tool-use suite:** run `tests/tool_use` on each. Flip
       `supports_function_calling` only on pass. Expect possible prompt-based
       failures.
-- [ ] **exp 4 — reasoning check:** does the 26B (or any) emit a separable think
+- [x] **exp 4 — reasoning check:** does the 26B (or any) emit a separable think
       channel? If so, set `reasoning_format`. Else leave off.
 - [ ] **exp 5 — speculative decoding:** try the Gemma draft models via
       `--model-draft` for a decode speedup (no quality loss) — advanced, optional.
@@ -72,6 +72,10 @@ to Qwen3.6's hybrid DeltaNet). All ship a **draft model for speculative decoding
 | Date | Model | Change | Reason / result |
 |---|---|---|---|
 | 06-04 | all | Initial entries; ctx 64k/64k/32k, Gemma sampling, tools/reasoning off | Starting values (above). Placeholder decode_tps (60/50/20) pending bench. |
+| 06-04 | all | **exp 1 load+smoke: PASS** | All 3 load on SYCL0, clean "OK" replies, no leaked tokens. |
+| 06-04 | all | **exp 3 tool-use: 6/7 PASS → `supports_function_calling: true`** | Structured `tool_calls` (NOT the prompt-based JSON failure I feared) — basic/roundtrip/multi/no-tool/streaming/parallel all PASS. `tool_choice:required` NOT honored (answers in prose then 🌻 emoji-loops, like Qwen3.6) → `supports_tool_choice: false` kept. |
+| 06-04 | all | **exp 2 decode bench (llama-bench tg64, t/s @ d0 / @ d32k)** | 12b **51.8 / 34.8**; 26b-a4b **74.9 / 45.5** (fastest — A4B!); 31b **23.0 / 12.7**. `decode_tps` set 52 / 75 / 23. Cliff is *moderate* (B70 bandwidth >> the APU) — only ~33% drop by 32k, so ctx headroom exists. |
+| 06-04 | all | **exp 4 reasoning: no think channel** | Replies were plain prose, no `<think>` → `supports_reasoning: false` kept (incl. the 26B "reasoning" model). |
 
 ## Open questions
 

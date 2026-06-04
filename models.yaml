@@ -414,10 +414,10 @@ models:
 
   - name: gemma-4-12b
     enabled: true
-    decode_tps: 60
+    decode_tps: 52
     litellm:
-      description: "Gemma 4 12B (Google) dense, multimodal (text-only here). Verify tool calling."
-      supports_function_calling: false
+      description: "Gemma 4 12B (Google) dense, multimodal (text-only here); full tool calling (tool_choice:required not honored)."
+      supports_function_calling: true
       supports_tool_choice: false
       supports_reasoning: false
     ctx: 65536
@@ -432,18 +432,20 @@ models:
     notes: >-
       ~7.1 GB Q4_K_M, dense 12B, 256K native ctx (started at 64k pending the
       decode-vs-context bench). Released 2026-06-03. Small enough to bump to
-      Q5_K_M/Q6_K on the 32 GB B70 if quality wanted. Tool calling UNVERIFIED
-      (Gemma historically prompt-based, not structured) — run the tool-use suite
-      before flipping supports_function_calling. Sampling per Gemma docs (temp
+      Q5_K_M/Q6_K on the 32 GB B70 if quality wanted. Tool calling VERIFIED 6/7
+      on 2026-06-04 — structured tool_calls (NOT prompt-based); basic, roundtrip,
+      multi, no-tool, streaming, parallel all PASS. tool_choice:required NOT
+      honored (answers in prose then degenerates into a 🌻 emoji loop, like
+      Qwen3.6) → supports_tool_choice: false. Sampling per Gemma docs (temp
       1.0, NOT Qwen's 0.6). Has a draft model for speculative decoding (future
       optimization, see tracking doc).
 
   - name: gemma-4-26b-a4b
     enabled: true
-    decode_tps: 50
+    decode_tps: 75
     litellm:
-      description: "Gemma 4 26B-A4B (Google) MoE, 4B active; high-throughput reasoning. Verify tool calling."
-      supports_function_calling: false
+      description: "Gemma 4 26B-A4B (Google) MoE, 4B active; full tool calling (tool_choice:required not honored)."
+      supports_function_calling: true
       supports_tool_choice: false
       supports_reasoning: false
     ctx: 65536
@@ -460,14 +462,16 @@ models:
       params), all 26B must load. 256K native ctx (started 64k). Released
       2026-03-31. "Advanced reasoning" capability but NOT confirmed to use a
       deepseek-style think channel — verify before setting reasoning_format /
-      supports_reasoning. Tool calling UNVERIFIED. Sampling per Gemma docs.
+      supports_reasoning (replies showed no think channel → left off). Tool
+      calling VERIFIED 6/7 on 2026-06-04 (structured); tool_choice:required not
+      honored. Sampling per Gemma docs.
 
   - name: gemma-4-31b
     enabled: true
-    decode_tps: 20
+    decode_tps: 23
     litellm:
-      description: "Gemma 4 31B (Google) dense; strongest Gemma 4. Verify tool calling."
-      supports_function_calling: false
+      description: "Gemma 4 31B (Google) dense; strongest Gemma 4; full tool calling (tool_choice:required not honored)."
+      supports_function_calling: true
       supports_tool_choice: false
       supports_reasoning: false
     ctx: 32768
@@ -482,7 +486,8 @@ models:
     notes: >-
       ~18.3 GB Q4_K_M, dense 31B (flagship). 256K native ctx, but started at 32k
       — dense decode is slower and KV bigger, so be conservative (cf. dense Qwen
-      27B). Released 2026-03-31. Tool calling UNVERIFIED. Sampling per Gemma docs.
+      27B). Released 2026-03-31. Tool calling VERIFIED 6/7 on 2026-06-04
+      (structured); tool_choice:required not honored. Sampling per Gemma docs.
       Q5_K_M (21.7 GB) also fits the 32 GB B70 if quality > speed.
 
   # ===========================================================================
