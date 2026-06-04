@@ -65,7 +65,10 @@ to Qwen3.6's hybrid DeltaNet). All ship a **draft model for speculative decoding
       channel? If so, set `reasoning_format`. Else leave off.
 - [ ] **exp 5 — speculative decoding:** try the Gemma draft models via
       `--model-draft` for a decode speedup (no quality loss) — advanced, optional.
-- [ ] Sync to LiteLLM; mirror into the opencode app-config per the sync rule.
+- [x] Synced to **LiteLLM** (+3, with `num_retries:0`/`timeout`). Added to the
+      **live** opencode config (tool_call on; client ctx 57344/57344/28672 with
+      headroom under the server `-c`). Tracked `docs/app-configs/` copy deferred
+      until the open opencode-config PR (#8) merges, to avoid a file conflict.
 
 ## Change log
 
