@@ -14,7 +14,15 @@
       "name": "LiteLLM",
       "options": {
         "baseURL": "https://llm.araxia.cc/v1",
-        "apiKey": "{env:OPENCODE_LITELLM_API_KEY}"
+        "apiKey": "{env:OPENCODE_LITELLM_API_KEY}",
+        // Big-context turns (e.g. "take this plan and figure out where to start")
+        // make the B70 prefill a near-full 128K prompt before the first token —
+        // observed up to ~2 min. Give the long prefill room instead of erroring.
+        // headerTimeout is the critical one: no response byte arrives until prefill
+        // finishes. Aligned with LiteLLM's 900s server-side ceiling.
+        "headerTimeout": 300000,
+        "timeout": 900000,
+        "chunkTimeout": 120000
       },
       "models": {
         // ---- Qwen3.6 (newest) ----
