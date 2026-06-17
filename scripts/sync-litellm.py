@@ -18,6 +18,13 @@ Only models LiteLLM added to its own DB (model_info.db_model == true) are ever
 deleted or rewritten — models baked into LiteLLM's static config.yaml are left
 alone (the API can't manage them anyway) and reported as skipped.
 
+Stack ownership (--stack / `stack:` in models.yaml): when set, every model this
+script registers is tagged with model_info.stack = <stack>, and the delete pass
+only removes stale models carrying THIS stack's tag. Models owned by another
+stack (or untagged) are left alone. This lets several stacks (e.g. a Battlemage
+SYCL box and a ROCm box) share one LiteLLM proxy without their syncs deleting
+each other's models.
+
 Configuration (CLI flag > real env var > .env in repo root > default):
   --upstream       UPSTREAM_URL    http://localhost:11434
                    Where THIS script reads /v1/models.
@@ -36,7 +43,8 @@ Configuration (CLI flag > real env var > .env in repo root > default):
 The LiteLLM admin key is read from LITELLM_API_KEY or LITELLM_MASTER_KEY
 (env or .env). It is never printed.
 
-Flags: --dry-run (plan only), --no-delete (never remove), --timeout SECS.
+Flags: --stack NAME (ownership tag, scopes deletes), --dry-run (plan only),
+--no-delete (never remove), --timeout SECS.
 """
 
 import argparse
@@ -171,6 +179,20 @@ def load_model_infos():
     return out
 
 
+def load_manifest_stack():
+    """Read the top-level `stack:` ownership tag from models.yaml (or None)."""
+    path = os.path.join(REPO_ROOT, "models.yaml")
+    if not os.path.isfile(path):
+        return None
+    try:
+        import yaml
+    except ImportError:
+        return None
+    with open(path, encoding="utf-8") as fh:
+        manifest = yaml.safe_load(fh) or {}
+    return manifest.get("stack")
+
+
 def fetch_source_models(upstream, timeout):
     url = f"{upstream.rstrip('/')}/v1/models"
     status, payload = api("GET", url, key=None, timeout=timeout)
@@ -237,6 +259,9 @@ def parse_args():
     p.add_argument("--model-api-key", dest="model_api_key",
                    help="api_key stored with each model (default 'dummy')")
     p.add_argument("--provider", help="LiteLLM provider prefix (default 'openai')")
+    p.add_argument("--stack", help="ownership tag written to each model's "
+                   "model_info.stack; this sync only deletes stale models carrying "
+                   "THIS tag (default: top-level 'stack:' in models.yaml)")
     p.add_argument("--timeout", type=float, default=15.0, help="per-request timeout seconds")
     p.add_argument("--dry-run", action="store_true", help="show the plan, change nothing")
     p.add_argument("--no-delete", action="store_true", help="never delete, only add/update")
@@ -260,9 +285,15 @@ def main():
         die("no LiteLLM admin key. Set LITELLM_API_KEY (or LITELLM_MASTER_KEY) "
             "in the environment or in .env.")
 
+    stack = setting(args.stack, "LITELLM_STACK", None) or load_manifest_stack()
+
     print(f"source  : {upstream.rstrip('/')}/v1/models")
     print(f"litellm : {litellm.rstrip('/')}/model/*")
     print(f"api_base: {api_base}  (provider: {provider})")
+    if stack:
+        print(f"stack   : {stack}  (deletes scoped to models tagged stack='{stack}')")
+    else:
+        print("stack   : (none) — deletes ALL stale DB models (no ownership scoping)")
     if args.dry_run:
         print("mode    : DRY RUN — no changes will be made")
     print()
@@ -272,19 +303,30 @@ def main():
     existing = fetch_litellm_models(litellm, admin_key, args.timeout)
     model_infos = load_model_infos()
 
+    def owned_by_stack(cur):
+        """True if this stack may manage `cur`: no stack set (manage all), or the
+        model carries this stack's tag. Other-stack / untagged models are off-limits."""
+        if not stack:
+            return True
+        return ((cur.get("info") or {}).get("stack")) == stack
+
     if args.reset:
-        purge = [(name, info["id"]) for name, info in existing.items() if info["db_model"]]
+        purge = [(name, info["id"]) for name, info in existing.items()
+                 if info["db_model"] and owned_by_stack(info)]
         non_db = [name for name, info in existing.items() if not info["db_model"]]
         verb = "would delete" if args.dry_run else "deleting"
-        print(f"reset: {verb} {len(purge)} DB-managed model(s) before re-adding")
+        scope = f" tagged stack='{stack}'" if stack else ""
+        print(f"reset: {verb} {len(purge)} DB-managed model(s){scope} before re-adding")
         for name, model_id in purge:
             print(f"  - {name}")
             if not args.dry_run:
                 delete_model(litellm, admin_key, model_id, args.timeout)
         for name in non_db:
             print(f"  skip {name} (config-defined, not deletable via API)")
-        # Treat purged models as gone so the plan below re-adds everything fresh.
-        existing = {name: info for name, info in existing.items() if not info["db_model"]}
+        # Treat purged models as gone so the plan below re-adds them fresh; leave
+        # config-defined and other-stack models in `existing` untouched.
+        purged = {name for name, _ in purge}
+        existing = {name: info for name, info in existing.items() if name not in purged}
         print()
 
     def desired_params(model_id):
@@ -292,11 +334,17 @@ def main():
                 "num_retries": MODEL_NUM_RETRIES, "timeout": MODEL_TIMEOUT}
 
     def desired_info(model_id):
-        return model_infos.get(model_id) or None
+        info = dict(model_infos.get(model_id) or {})
+        if stack:
+            info["stack"] = stack
+        return info or None
 
     def info_drifted(model_id, cur):
-        """True if any manifest model_info field differs from what LiteLLM has."""
-        want = model_infos.get(model_id) or {}
+        """True if any manifest model_info field (incl. the stack tag) differs from
+        what LiteLLM has — so existing models get re-pointed once to gain the tag."""
+        want = dict(model_infos.get(model_id) or {})
+        if stack:
+            want["stack"] = stack
         have = cur.get("info") or {}
         for k, v in want.items():
             hv = have.get(k)
@@ -324,10 +372,14 @@ def main():
     for name, info in existing.items():
         if name in source_ids:
             continue
+        owner = (info.get("info") or {}).get("stack")
         if not info["db_model"]:
             skipped.append((name, "config-defined, not deletable via API"))
         elif args.no_delete:
             skipped.append((name, "stale, but --no-delete set"))
+        elif stack and owner != stack:
+            skipped.append((name, f"stale, but owned by stack '{owner or 'untagged'}' "
+                                  f"(not '{stack}') — leaving"))
         else:
             to_delete.append((name, info["id"]))
 

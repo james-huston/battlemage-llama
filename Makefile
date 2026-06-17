@@ -95,6 +95,7 @@ sync-litellm: ## Mirror llama-swap's models into a LiteLLM proxy (adds new, dele
 		$(if $(API_BASE),--api-base $(API_BASE)) \
 		$(if $(MODEL_API_KEY),--model-api-key $(MODEL_API_KEY)) \
 		$(if $(PROVIDER),--provider $(PROVIDER)) \
+		$(if $(STACK),--stack $(STACK)) \
 		$(if $(DRY_RUN),--dry-run) \
 		$(if $(NO_DELETE),--no-delete) \
 		$(if $(RESET),--reset)

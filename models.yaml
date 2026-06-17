@@ -46,6 +46,12 @@
 # whole fleet on the next `make sync-litellm`:
 #   output $/token = watts/1000 * (1/decode_tps/3600) * usd_per_kwh * amortization
 #   input  $/token = output / input_factor   (prefill is faster than decode)
+# Ownership tag for the shared LiteLLM proxy. `make sync-litellm` writes this to
+# each model's model_info.stack and will ONLY delete stale models carrying this
+# tag — so the ROCm sibling stack (stack: rocm) can share the same proxy without
+# the two syncs deleting each other's models.
+stack: battlemage
+
 cost:
   watts: 250          # GPU draw under inference load (Arc Pro B70 TBP ~250W)
   usd_per_kwh: 0.18   # electricity rate — adjust to your local price
@@ -520,3 +526,63 @@ models:
       supports_function_calling: false
     source: "Civitai modelVersionId 2884631 (model 443821, v18.0 CoreShift)."
     notes: "Story 002. Pony-based: positive prompt should start with `score_9, score_8_up, score_7_up, ...` for best results. Same VRAM/perf envelope as SDXL (~7 GB, ~30 s @ 1024² on the B70)."
+
+  # ===========================================================================
+  # SMALL / MoE cross-stack models — also run on the ROCm RX 6650 XT sibling
+  # (stack: rocm, suffixed `-rocm` there). Kept here so the same model can be
+  # compared head-to-head on the B70 (fast) vs the 6650 XT (slower). decode_tps
+  # below is the MEASURED B70 (SYCL) figure; see the rocm repo's docs/benchmarks.md
+  # for the cross-stack table.
+  # ===========================================================================
+
+  - name: ministral-3-8b
+    enabled: true
+    decode_tps: 78
+    litellm:
+      description: "Ministral 3 8B Instruct (2512) dense — Arc B70 (fast), ~78 t/s decode. Dense daily-driver 8B; tool calling."
+      supports_function_calling: true
+      supports_tool_choice: true
+    ctx: 16384
+    temp: 0.7
+    top_p: 0.95
+    extra: "-fa 1"
+    repo: mistralai/Ministral-3-8B-Instruct-2512-GGUF
+    file: Ministral-3-8B-Instruct-2512-Q4_K_M.gguf
+    dir: ministral-3-8b
+    out: Q4_K_M.gguf
+    source: "HF mistralai/Ministral-3-8B-Instruct-2512-GGUF (Q4_K_M)."
+    notes: "Cross-stack pick. Dense mistral3 8.5B. ~78 t/s B70 / ~45 t/s 6650 XT."
+
+  - name: lfm2-8b-a1b
+    enabled: true
+    decode_tps: 179
+    litellm:
+      description: "LFM2-8B-A1B (Liquid AI) MoE 8.3B/1.5B-active — Arc B70 (fast), ~179 t/s decode. Small-MoE speed at dense-7B quality."
+      supports_function_calling: true
+    ctx: 8192
+    extra: "-fa 1"
+    repo: LiquidAI/LFM2-8B-A1B-GGUF
+    file: LFM2-8B-A1B-Q5_K_M.gguf
+    dir: lfm2-8b-a1b
+    out: Q5_K_M.gguf
+    source: "HF LiquidAI/LFM2-8B-A1B-GGUF (Q5_K_M)."
+    notes: "Cross-stack pick. MoE (lfm2moe), 1.5B active. ~179 t/s B70 / ~157 t/s 6650 XT — MoE narrows the gap most (active-param bound, not bandwidth)."
+
+  - name: gemma-4-e4b
+    enabled: true
+    decode_tps: 68
+    litellm:
+      description: "Gemma 4 E4B (it) — Arc B70 (fast), ~68 t/s decode. Tiny PLE-offload model; long-context comfort pick."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: true
+    ctx: 32768
+    temp: 1.0
+    top_p: 0.95
+    extra: "-fa 1 --top-k 64 --min-p 0.0 --samplers temperature;top_p;top_k"
+    repo: unsloth/gemma-4-E4B-it-GGUF
+    file: gemma-4-E4B-it-Q6_K.gguf
+    dir: gemma-4-e4b
+    out: Q6_K.gguf
+    source: "HF unsloth/gemma-4-E4B-it-GGUF (Q6_K)."
+    notes: "Cross-stack pick. gemma4 E4B (~4B effective via PLE offload). ~68 t/s B70 / ~50 t/s 6650 XT."
