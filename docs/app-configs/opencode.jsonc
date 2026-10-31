@@ -17,7 +17,33 @@
         "apiKey": "{env:OPENCODE_LITELLM_API_KEY}"
       },
       "models": {
-        // ---- Qwen3.6 (newest) ----
+        // ---- Candidates (2026-10-31): all thinkers, tool calling incl. forced choice ----
+        "qwen3.8-27b-q4": {
+          "name": "Qwen3.8 27B",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 65536, "output": 16384 }
+        },
+        "nemotron-3.5-lightning-30b-a3b": {
+          "name": "Nemotron 3.5 Lightning 30B A3B",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 16384 }
+        },
+        "laguna-xs-2.1": {
+          "name": "Laguna XS 2.1 (33B A3B coder)",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 131072, "output": 16384 }
+        },
+        "muse-glimmer-30b": {
+          "name": "Muse Glimmer 30B",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 65536, "output": 16384 }
+        },
+
+        // ---- Qwen3.6 ----
         "qwen3.6-35b-a3b-q4-thinking": {
           "name": "Qwen3.6 35B A3B Thinking",
           "tool_call": true,

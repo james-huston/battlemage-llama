@@ -24,6 +24,11 @@ Known-good snapshot (2026-05-29): llama.cpp `master`, llama-swap `217`,
 compute-runtime `26.18.38308.1`, IGC `2.34.4+21428`, gmmlib `22.10.0`,
 oneAPI `2025.3.0-...-devel-ubuntu24.04`.
 
+Last rebuild (2026-10-31): llama.cpp `master` @ `8956c76` (0.8.0-dev), other pins
+unchanged. Validation: all 26 chat models passed `make test-models`; MoE decode
+improved (qwen3.6-35b-a3b 79 → 96 t/s, qwen3.6-27b 25 → 27 t/s). The previous image
+is kept as `battlemage-llama:pre-2026-10-31` for rollback.
+
 ## 1. Check what's current upstream
 
 ```bash
