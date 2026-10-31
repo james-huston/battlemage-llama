@@ -46,6 +46,12 @@
 # whole fleet on the next `make sync-litellm`:
 #   output $/token = watts/1000 * (1/decode_tps/3600) * usd_per_kwh * amortization
 #   input  $/token = output / input_factor   (prefill is faster than decode)
+# Ownership tag for the shared LiteLLM proxy. `make sync-litellm` writes this to
+# each model's model_info.stack and will ONLY delete stale models carrying this
+# tag — so the ROCm sibling stack (stack: rocm) can share the same proxy without
+# the two syncs deleting each other's models.
+stack: battlemage
+
 cost:
   watts: 250          # GPU draw under inference load (Arc Pro B70 TBP ~250W)
   usd_per_kwh: 0.18   # electricity rate — adjust to your local price
@@ -305,7 +311,7 @@ models:
   # download); the none variant is disabled but kept for flip-on.
   - name: qwen3.6-35b-a3b-q4-thinking
     enabled: true
-    decode_tps: 79
+    decode_tps: 96
     litellm:
       description: "Qwen3.6 MoE A3B (hybrid DeltaNet+MoE), reasoning exposed (deepseek); agentic coding."
       supports_function_calling: true
@@ -330,11 +336,12 @@ models:
       loop) — hence supports_tool_choice: false. Heavy default-thinker: give it
       token headroom (the suite only passed once max_tokens was raised from 256
       to 2048). decode_tps 79 t/s measured with llama-bench tg128 on 2026-06-03
-      (pp512 1152 t/s). Carries the canonical download; qwen3.6-35b-a3b-q4 reuses it.
+      (pp512 1152 t/s); re-measured 96 t/s (pp512 1071) on llama.cpp 8956c76
+      2026-10-31. Carries the canonical download; qwen3.6-35b-a3b-q4 reuses it.
 
   - name: qwen3.6-35b-a3b-q4
     enabled: false
-    decode_tps: 79
+    decode_tps: 96
     litellm:
       description: "Qwen3.6 MoE A3B, raw thinking inline in content (reasoning_format: none)."
       supports_function_calling: true
@@ -357,7 +364,7 @@ models:
 
   - name: qwen3.6-27b-q4
     enabled: true
-    decode_tps: 25
+    decode_tps: 27
     litellm:
       description: "Qwen3.6 dense 27B; strong agentic coding (beats prior 397B flagship on code). Tool calling, no forced choice."
       supports_function_calling: true
@@ -379,7 +386,8 @@ models:
       headroom. Multimodal repo (ships mmproj vision projectors) but run
       text-only here. Running at 64k ctx like the 3.5 dense; test 128k later.
       decode_tps 25 t/s measured with llama-bench tg128 on 2026-06-03
-      (24.94 ± 0.04; pp512 781 t/s).
+      (24.94 ± 0.04; pp512 781 t/s); re-measured 27 t/s (pp512 1113) on
+      llama.cpp 8956c76 2026-10-31.
 
   - name: qwen2.5-coder-32b-q4
     enabled: true
@@ -520,3 +528,171 @@ models:
       supports_function_calling: false
     source: "Civitai modelVersionId 2884631 (model 443821, v18.0 CoreShift)."
     notes: "Story 002. Pony-based: positive prompt should start with `score_9, score_8_up, score_7_up, ...` for best results. Same VRAM/perf envelope as SDXL (~7 GB, ~30 s @ 1024² on the B70)."
+
+  # ===========================================================================
+  # SMALL / MoE cross-stack models — also run on the ROCm RX 6650 XT sibling
+  # (stack: rocm, suffixed `-rocm` there). Kept here so the same model can be
+  # compared head-to-head on the B70 (fast) vs the 6650 XT (slower). decode_tps
+  # below is the MEASURED B70 (SYCL) figure; see the rocm repo's docs/benchmarks.md
+  # for the cross-stack table.
+  # ===========================================================================
+
+  - name: ministral-3-8b
+    enabled: true
+    decode_tps: 78
+    litellm:
+      description: "Ministral 3 8B Instruct (2512) dense — Arc B70 (fast), ~78 t/s decode. Dense daily-driver 8B; tool calling."
+      supports_function_calling: true
+      supports_tool_choice: true
+    ctx: 16384
+    temp: 0.7
+    top_p: 0.95
+    extra: "-fa 1"
+    repo: mistralai/Ministral-3-8B-Instruct-2512-GGUF
+    file: Ministral-3-8B-Instruct-2512-Q4_K_M.gguf
+    dir: ministral-3-8b
+    out: Q4_K_M.gguf
+    source: "HF mistralai/Ministral-3-8B-Instruct-2512-GGUF (Q4_K_M)."
+    notes: "Cross-stack pick. Dense mistral3 8.5B. ~78 t/s B70 / ~45 t/s 6650 XT."
+
+  - name: lfm2-8b-a1b
+    enabled: true
+    decode_tps: 179
+    litellm:
+      description: "LFM2-8B-A1B (Liquid AI) MoE 8.3B/1.5B-active — Arc B70 (fast), ~179 t/s decode. Small-MoE speed at dense-7B quality."
+      supports_function_calling: true
+    ctx: 8192
+    extra: "-fa 1"
+    repo: LiquidAI/LFM2-8B-A1B-GGUF
+    file: LFM2-8B-A1B-Q5_K_M.gguf
+    dir: lfm2-8b-a1b
+    out: Q5_K_M.gguf
+    source: "HF LiquidAI/LFM2-8B-A1B-GGUF (Q5_K_M)."
+    notes: "Cross-stack pick. MoE (lfm2moe), 1.5B active. ~179 t/s B70 / ~157 t/s 6650 XT — MoE narrows the gap most (active-param bound, not bandwidth)."
+
+  - name: gemma-4-e4b
+    enabled: true
+    decode_tps: 68
+    litellm:
+      description: "Gemma 4 E4B (it) — Arc B70 (fast), ~68 t/s decode. Tiny PLE-offload model; long-context comfort pick."
+      supports_function_calling: true
+      supports_tool_choice: false
+      supports_reasoning: true
+    ctx: 32768
+    temp: 1.0
+    top_p: 0.95
+    extra: "-fa 1 --top-k 64 --min-p 0.0 --samplers temperature;top_p;top_k"
+    repo: unsloth/gemma-4-E4B-it-GGUF
+    file: gemma-4-E4B-it-Q6_K.gguf
+    dir: gemma-4-e4b
+    out: Q6_K.gguf
+    source: "HF unsloth/gemma-4-E4B-it-GGUF (Q6_K)."
+    notes: "Cross-stack pick. gemma4 E4B (~4B effective via PLE offload). ~68 t/s B70 / ~50 t/s 6650 XT."
+
+  # ===========================================================================
+  # CANDIDATES (2026-10-31) — open models released Jul–Oct 2026 that fit the
+  # B70 at ~Q4. Need a llama.cpp image built after 2026-08-26 (Laguna merged
+  # 2026-07-22 #25165, Nemotron 3.5 Lightning conversion fix #27729, Muse
+  # Glimmer chat fixes Sept). All run text-only (no mmproj).
+  # ===========================================================================
+
+  - name: qwen3.8-27b-q4
+    enabled: true
+    decode_tps: 22
+    litellm:
+      description: "Qwen3.8 dense 27B (Aug 2026); big agentic-coding jump over 3.6-27B (SWE-bench Pro 61.7 vs 53.5). Reasoning exposed."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: true
+    ctx: 65536
+    temp: 1.0
+    top_p: 0.95
+    reasoning_format: deepseek
+    extra: "--top-k 20"
+    repo: unsloth/Qwen3.8-27B-GGUF
+    file: Qwen3.8-27B-UD-Q4_K_M.gguf
+    dir: qwen3.8-27b
+    out: Q4_K_M.gguf
+    source: "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF (Apache-2.0)"
+    notes: >-
+      ~16.5 GB, dense 27B, same qwen35 hybrid DeltaNet arch as qwen3.6-27b.
+      Thinking on by default; sampling per model card (thinking: temp 1.0,
+      top_p 0.95, top_k 20). 64k ctx like the 3.6 dense.
+      Validated 2026-10-31 on llama.cpp 8956c76: smoke OK, tool calling 7/7 incl. tool_choice:required and parallel;
+      deepseek routing splits reasoning_content cleanly (no think-tag leak).
+      llama-bench tg128 22 t/s, pp512 810 t/s. Slower decode than qwen3.6-27b (22 vs 27 t/s on the same image) — UD quant mix + MTP tensors; trade speed for the agentic-benchmark jump.
+
+  - name: nemotron-3.5-lightning-30b-a3b
+    enabled: true
+    decode_tps: 82
+    litellm:
+      description: "NVIDIA Nemotron 3.5 Lightning 30B-A3B (Aug 2026) hybrid Mamba-2/MoE; agent/tool-use focused. Reasoning exposed."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: true
+    ctx: 131072
+    temp: 0.6
+    top_p: 0.95
+    reasoning_format: deepseek
+    extra: "--min-p 0.01"
+    repo: unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF
+    file: NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_M.gguf
+    dir: nemotron-3.5-lightning-30b-a3b
+    out: Q4_K_M.gguf
+    source: "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF (OpenMDW-1.1)"
+    notes: >-
+      ~25.3 GB at UD-Q4_K_M — tight on 32 GB, but hybrid Mamba layers keep the
+      KV cache small. Needs SYCL SSM_SCAN/SSM_CONV (present upstream).
+      Sampling per Unsloth (thinking: temp 0.6, top_p 0.95, min_p 0.01).
+      Validated 2026-10-31 on llama.cpp 8956c76: smoke OK, tool calling 6/6 required PASS (parallel advisory: warn, serializes calls);
+      deepseek routing splits reasoning_content cleanly (no think-tag leak).
+      llama-bench tg128 82 t/s, pp512 1275 t/s. Hybrid Mamba-2 runs cleanly on SYCL (SSM_SCAN/SSM_CONV); fastest prefill of the batch.
+
+  - name: laguna-xs-2.1
+    enabled: true
+    decode_tps: 100
+    litellm:
+      description: "Poolside Laguna XS 2.1 coding MoE 33B/3B-active (Jul 2026); SWE-bench Verified 70.9. Reasoning exposed."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: true
+    ctx: 131072
+    temp: 1.0
+    top_p: 1.0
+    reasoning_format: deepseek
+    extra: "--top-k 20"
+    repo: poolside/Laguna-XS-2.1-GGUF
+    file: Laguna-XS-2.1-Q4_K_M.gguf
+    dir: laguna-xs-2.1
+    out: Q4_K_M.gguf
+    source: "https://huggingface.co/poolside/Laguna-XS-2.1-GGUF (official, OpenMDW-1.1)"
+    notes: >-
+      ~20.3 GB official Q4_K_M. 30 of 40 layers are 512-token sliding window, so
+      KV stays small at long ctx. Upstream ships an FP8 KV cache; we keep
+      llama.cpp's default f16 KV (KV quant regresses on SYCL). Sampling per
+      model card (temp 1.0, top_k 20, top_p 1.0).
+      Validated 2026-10-31 on llama.cpp 8956c76: smoke OK, tool calling 6/6 required PASS (parallel advisory: warn, serializes calls);
+      deepseek routing splits reasoning_content cleanly (no think-tag leak).
+      llama-bench tg128 100 t/s, pp512 916 t/s. Fastest decode of any >20B model here; heaviest thinker of the four (verbose reasoning).
+
+  - name: muse-glimmer-30b
+    enabled: true
+    decode_tps: 31
+    litellm:
+      description: "Meta Muse Glimmer 30B (Aug 2026) dense agent model; non-Qwen comparison point."
+      supports_function_calling: true
+      supports_tool_choice: true
+      supports_reasoning: true
+    ctx: 65536
+    reasoning_format: deepseek
+    repo: meta-models/Muse-Glimmer-30B-GGUF
+    file: Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf
+    dir: muse-glimmer-30b
+    out: Q4_K_M.gguf
+    source: "https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF (official; card license apache-2.0)"
+    notes: >-
+      ~16.8 GB official Q4_K_M; dense 28B text decoder (+2B vision encoder,
+      not loaded). 64k ctx like the other dense ~30B models.
+      Validated 2026-10-31 on llama.cpp 8956c76: smoke OK, tool calling 6/6 required PASS (parallel advisory: warn, serializes calls);
+      deepseek routing splits reasoning_content cleanly (no think-tag leak).
+      llama-bench tg128 31 t/s, pp512 1187 t/s. Dense but faster than the 27B Qwens (fused QKV).
