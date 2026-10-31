@@ -209,6 +209,10 @@ def fetch_litellm_models(litellm, key, timeout):
     status, payload = api("GET", url, key=key, timeout=timeout)
     if status == 401:
         die("LiteLLM rejected the admin key (401). Check LITELLM_API_KEY / LITELLM_MASTER_KEY.")
+    # A proxy with zero models answers 500 "LLM Model List not loaded" rather
+    # than an empty list (e.g. a freshly reset instance) — treat it as empty.
+    if status == 500 and "Model List not loaded" in str(payload):
+        return {}
     if status != 200 or not isinstance(payload, dict):
         die(f"GET {url} returned {status}: {payload}")
     models = {}
@@ -330,8 +334,14 @@ def main():
         print()
 
     def desired_params(model_id):
-        return {"model": f"{provider}/{model_id}", "api_base": api_base, "api_key": model_api_key,
-                "num_retries": MODEL_NUM_RETRIES, "timeout": MODEL_TIMEOUT}
+        params = {"model": f"{provider}/{model_id}", "api_base": api_base, "api_key": model_api_key,
+                  "num_retries": MODEL_NUM_RETRIES, "timeout": MODEL_TIMEOUT}
+        # Newer LiteLLM ignores cost fields sent only in model_info (they come
+        # back null); custom pricing must also ride in litellm_params.
+        for k, v in (model_infos.get(model_id) or {}).items():
+            if k.endswith("cost_per_token"):
+                params[k] = v
+        return params
 
     def desired_info(model_id):
         info = dict(model_infos.get(model_id) or {})
