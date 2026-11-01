@@ -26,6 +26,7 @@
 #                      filename. SHA256 from Civitai is verified after download.
 #
 #   Runtime (optional; defaults match the Battlemage config we already run)
+#     ttl        idle-unload seconds (default: top-level `ttl:`, else 600)
 #     ctx        default 131072   — cap dense 24B Mistral at 65536 (SYCL segfault)
 #     template   jinja file in templates/  -> --chat-template-file /templates/<x>
 #     reasoning  true -> --reasoning-format deepseek
@@ -51,6 +52,13 @@
 # tag — so the ROCm sibling stack (stack: rocm) can share the same proxy without
 # the two syncs deleting each other's models.
 stack: battlemage
+
+# Idle unload, seconds, for every model (a per-model `ttl:` still overrides).
+# 0 = never unload on idle: the last-used model stays resident until a request
+# for a DIFFERENT model swaps it out — avoids 30–60 s cold loads for agents
+# (Hermes, opencode) that go quiet between turns. Costs: VRAM stays held and
+# the B70 idles with a model loaded.
+ttl: 0
 
 cost:
   watts: 250          # GPU draw under inference load (Arc Pro B70 TBP ~250W)

@@ -89,7 +89,7 @@ def model_path(entry):
     return f"/models/{rel}", rel
 
 
-def generate_block(entry, cpath):
+def generate_block(entry, cpath, default_ttl=DEFAULT_TTL):
     name = entry["name"]
     engine = entry.get("engine", "llama-server")
     lines = [f"  # {name} — from models.yaml", f"  {name}:", "    cmd: |"]
@@ -140,13 +140,14 @@ def generate_block(entry, cpath):
         # llama-swap's default health probe is /health, which sd-server doesn't
         # serve; point it at an endpoint sd-server answers once the model is up.
         lines.append("    checkEndpoint: /v1/models")
-    lines.append(f"    ttl: {entry.get('ttl', DEFAULT_TTL)}")
+    lines.append(f"    ttl: {entry.get('ttl', default_ttl)}")
     return "\n".join(lines)
 
 
 def build_config(manifest, enabled):
     health = manifest.get("healthCheckTimeout", DEFAULT_HEALTHCHECK)
     start = manifest.get("startPort", DEFAULT_START_PORT)
+    ttl = manifest.get("ttl", DEFAULT_TTL)
     head = [
         SCHEMA,
         "#",
@@ -161,7 +162,7 @@ def build_config(manifest, enabled):
     ]
     blocks = []
     for entry, cpath, _ in enabled:
-        blocks.append(generate_block(entry, cpath))
+        blocks.append(generate_block(entry, cpath, ttl))
     return "\n".join(head) + "\n\n".join(blocks) + "\n"
 
 
